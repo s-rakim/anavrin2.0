@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b5f7c"/><stop offset="1" stop-color="#0e2a3b"/></linearGradient>
+    <radialGradient id="b" cx=".35" cy=".3" r=".7"><stop offset="0" stop-color="#9a6bd0"/><stop offset="1" stop-color="#4b2380"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#g)"/>
+  <text x="29" y="46" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-weight="700" font-size="40" fill="#e6ecf2" text-anchor="middle">A</text>
+  <circle cx="47" cy="44" r="6" fill="url(#b)"/><circle cx="53" cy="36" r="4" fill="url(#b)"/><circle cx="51" cy="52" r="3.5" fill="url(#b)"/>
+</svg>
