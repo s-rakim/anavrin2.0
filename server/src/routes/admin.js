@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import crypto from 'node:crypto';
-import path from 'node:path';
 import multer from 'multer';
 import { UPLOAD_DIR, all, one, run, tx } from '../db.js';
 import { publicUser, requireAuth, requireRole } from '../auth.js';
@@ -60,17 +59,17 @@ router.get('/overview', h((req, res) => {
 
 // ---------- Products & inventory ----------
 
+const IMAGE_TYPES = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/avif': '.avif', 'image/gif': '.gif' };
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: UPLOAD_DIR,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '') || '.jpg';
-      cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
-    },
+    // The extension comes from the validated content type, never from the uploaded file name.
+    filename: (req, file, cb) => cb(null, `${Date.now()}-${crypto.randomBytes(6).toString('hex')}${IMAGE_TYPES[file.mimetype]}`),
   }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const ok = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif'].includes(file.mimetype);
+    const ok = Object.hasOwn(IMAGE_TYPES, file.mimetype);
     cb(ok ? null : bad('Upload a JPG, PNG, WebP, AVIF or GIF image.'), ok);
   },
 });

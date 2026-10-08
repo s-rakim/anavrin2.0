@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { Redirect } from '../components/Motion';
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowLeft, ArrowRight, Banknote, Bike, CalendarClock, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -25,7 +26,7 @@ export default function RiderApply() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user)} replace />;
+  if (user) return <Redirect to={homeFor(user)} replace />;
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const validateStep = (s) => {

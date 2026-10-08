@@ -1,3 +1,4 @@
+import './env.js';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import express from 'express';
 import multer from 'multer';
 import { UPLOAD_DIR } from './db.js';
 import { initRealtime } from './realtime.js';
+import { rateLimit, securityHeaders } from './security.js';
 import authRoutes from './routes/auth.js';
 import catalogRoutes from './routes/catalog.js';
 import orderRoutes from './routes/orders.js';
@@ -18,7 +20,19 @@ const PORT = Number(process.env.PORT) || 4000;
 
 const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', process.env.TRUST_PROXY === 'true');
+app.use(securityHeaders);
 app.use(express.json({ limit: '200kb' }));
+
+// Slow down password guessing and sign-up spam.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  key: (req) => `${req.ip}|${String(req.body?.email || '').toLowerCase()}`,
+  message: 'Too many login attempts. Please wait 15 minutes and try again.',
+});
+const signupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 20 });
+app.use('/api/auth/login', loginLimiter);
+app.use(['/api/auth/signup', '/api/auth/rider-apply'], signupLimiter);
 
 app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d', fallthrough: false }));
 

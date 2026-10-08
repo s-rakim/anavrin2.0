@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "src/index.js",
   "scripts": {
-    "dev": "node --watch --env-file-if-exists=.env src/index.js",
-    "start": "node --env-file-if-exists=.env src/index.js",
-    "make-admin": "node --env-file-if-exists=.env scripts/make-admin.js"
+    "dev": "node --watch --disable-warning=ExperimentalWarning src/index.js",
+    "start": "node --disable-warning=ExperimentalWarning src/index.js",
+    "make-admin": "node --disable-warning=ExperimentalWarning scripts/make-admin.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

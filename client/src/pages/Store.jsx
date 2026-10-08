@@ -260,7 +260,7 @@ function CategoryRail({ products, categories, onPick }) {
             <div className="absolute inset-0 bg-gradient-to-t from-brand-950/85 via-brand-950/20 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-4 text-white">
               <p className="font-display text-2xl font-semibold">{c.name}</p>
-              <p className="text-sm text-white/75">{c.count} items</p>
+              <p className="text-sm text-white/75">{c.count} item{c.count === 1 ? '' : 's'}</p>
             </div>
           </motion.a>
         ))}

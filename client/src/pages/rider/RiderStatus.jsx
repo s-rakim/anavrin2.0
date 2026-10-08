@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Clock, LogOut, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { VEHICLES, dateOnly } from '../../lib/format';
-import { Page } from '../../components/Motion';
+import { Page, Redirect } from '../../components/Motion';
 import { LiveIndicator, Spinner } from '../../components/ui';
 
 /** What a rider sees between applying and being hired. Updates live when an admin decides. */
@@ -18,9 +17,9 @@ export default function RiderStatus() {
     api('/rider/application').then((d) => setApp(d.application)).catch(() => setApp(null));
   }, [user]);
 
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== 'rider') return <Navigate to="/" replace />;
-  if (user.status === 'active') return <Navigate to="/rider" replace />;
+  if (!user) return <Redirect to="/login" replace />;
+  if (user.role !== 'rider') return <Redirect to="/" replace />;
+  if (user.status === 'active') return <Redirect to="/rider" replace />;
 
   const rejected = user.status === 'rejected';
   return (

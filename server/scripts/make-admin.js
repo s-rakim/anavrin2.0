@@ -1,5 +1,6 @@
 // Promote an existing account to admin, or create a new admin account.
 // Usage: npm run make-admin -- someone@example.com [password] [Full Name]
+import '../src/env.js';
 import bcrypt from 'bcryptjs';
 import { one, run } from '../src/db.js';
 

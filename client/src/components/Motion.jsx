@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { animate, motion, useInView, useScroll, useSpring } from 'motion/react';
+import { Navigate } from 'react-router-dom';
+import { animate, motion, useInView, useIsPresent, useScroll, useSpring } from 'motion/react';
 
 const EASE = [0.22, 1, 0.36, 1];
 
@@ -75,3 +76,12 @@ export const staggerChild = {
   hidden: { opacity: 0, y: 22, filter: 'blur(4px)' },
   show: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.55, ease: EASE } },
 };
+
+/**
+ * <Navigate> that only fires on the page currently on screen. Pages leaving via an exit
+ * animation stay mounted briefly and must not redirect (e.g. after login or logout).
+ */
+export function Redirect(props) {
+  const present = useIsPresent();
+  return present ? <Navigate {...props} /> : null;
+}

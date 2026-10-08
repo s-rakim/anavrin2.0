@@ -50,7 +50,7 @@ export function SiteHeader() {
     >
       <div className="flex items-center gap-2">
         <Link to="/" className="flex shrink-0 items-center rounded-full px-2 py-1" aria-label="Anavrin home">
-          <img src="/anavrin-logo.png" alt="Anavrin" className="h-10 w-auto drop-shadow-sm sm:h-11" />
+          <img src="/anavrin-logo.png" alt="Anavrin" className="h-11 w-auto drop-shadow-sm sm:h-12" />
         </Link>
 
         <LiquidNav items={navItemsFor(user)} className="hidden md:block" />

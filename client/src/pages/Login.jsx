@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Redirect } from '../components/Motion';
 import { motion } from 'motion/react';
 import { Bike, Lock, Mail, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -19,20 +20,23 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const signingIn = useRef(false); // this page decides where to go after its own sign-in
   const notice = location.state?.notice;
 
-  if (user) return <Navigate to={homeFor(user)} replace />;
+  if (user && !signingIn.current) return <Redirect to={homeFor(user)} replace />;
 
   const submit = async (e) => {
     e.preventDefault();
     setError('');
     setBusy(true);
+    signingIn.current = true;
     try {
       const u = await login(email.trim(), password);
       const from = location.state?.from;
       const backToStore = u.role === 'customer' && from && !from.startsWith('/admin') && !from.startsWith('/rider');
       navigate(backToStore ? from : homeFor(u), { replace: true });
     } catch (err) {
+      signingIn.current = false;
       setError(err.message);
       setBusy(false);
     }

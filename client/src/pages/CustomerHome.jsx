@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { Bike, ChevronDown, MessageSquareText, PackageCheck, PackageOpen, Phone, ShoppingBag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -10,10 +10,15 @@ import { useSocketEvent } from '../lib/socket';
 import { STATUS, dateTime, money, phoneDigits, phoneLocal, timeAgo } from '../lib/format';
 import { OrderSteps, OrderTimeline } from '../components/OrderTracker';
 import { ProductCard } from '../components/ProductCard';
-import { Page, Reveal } from '../components/Motion';
+import { Page, Redirect, Reveal } from '../components/Motion';
 import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../components/ui';
 
 const ACTIVE = ['placed', 'confirmed', 'assigned', 'out_for_delivery', 'delivered'];
+const RIDER_NOTE = {
+  assigned: 'Picking up your order from the store',
+  out_for_delivery: 'On the way to you now',
+  delivered: 'Delivered your order',
+};
 
 /** The shopper's home page: live order tracking, receipt confirmation and history. */
 export default function CustomerHome() {
@@ -52,8 +57,8 @@ export default function CustomerHome() {
   const past = useMemo(() => (orders || []).filter((o) => !ACTIVE.includes(o.status)), [orders]);
   const picks = useMemo(() => [...products].sort((a, b) => b.rating - a.rating).slice(0, 4), [products]);
 
-  if (!user) return <Navigate to="/login" replace state={{ from: '/home' }} />;
-  if (user.role !== 'customer') return <Navigate to={user.role === 'admin' ? '/admin' : '/rider'} replace />;
+  if (!user) return <Redirect to="/login" replace state={{ from: '/home' }} />;
+  if (user.role !== 'customer') return <Redirect to={user.role === 'admin' ? '/admin' : '/rider'} replace />;
 
   return (
     <Page className="mx-auto max-w-6xl px-4 pt-28 pb-32 sm:px-6 sm:pt-32">
@@ -149,8 +154,8 @@ function ActiveOrderCard({ order, index, highlight, onConfirm }) {
             <div className="mx-5 mb-5 flex flex-wrap items-center gap-3 rounded-2xl bg-brand-50 p-4">
               <span className="grid size-11 place-items-center rounded-full bg-brand-800 text-white"><Bike className="size-5" aria-hidden /></span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{order.rider.name} is your rider</p>
-                <p className="text-xs text-muted">{order.status === 'out_for_delivery' ? 'On the way to you now' : 'Getting your order ready to go'}</p>
+                <p className="text-sm font-semibold">{order.rider.name} {order.status === 'delivered' ? 'was' : 'is'} your rider</p>
+                <p className="text-xs text-muted">{RIDER_NOTE[order.status] || ''}</p>
               </div>
               {order.rider.phone && (
                 <a href={`tel:${order.rider.phone}`} className="btn btn-secondary btn-sm"><Phone className="size-4" aria-hidden /> Call {phoneLocal(order.rider.phone)}</a>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Banknote, Info, MessageSquareText, Phone, ShoppingBag, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -7,7 +7,7 @@ import { deliveryFee, useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import { api } from '../lib/api';
 import { isKePhone, money, phoneLocal } from '../lib/format';
-import { Page, Reveal } from '../components/Motion';
+import { Page, Redirect, Reveal } from '../components/Motion';
 import { EmptyState, Field, Spinner } from '../components/ui';
 
 /** Kenyan checkout: no street address. The buyer leaves a phone number and directions for the rider. */
@@ -23,7 +23,7 @@ export default function Checkout() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (!user) return <Navigate to="/login" replace state={{ from: '/checkout', notice: 'Log in or create an account to check out.' }} />;
+  if (!user) return <Redirect to="/login" replace state={{ from: '/checkout', notice: 'Log in or create an account to check out.' }} />;
   if (user.role !== 'customer') {
     return (
       <Page className="mx-auto max-w-xl px-4 pt-32 pb-28">
