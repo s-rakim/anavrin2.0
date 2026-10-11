@@ -26,8 +26,8 @@ export function rateLimit({ windowMs, max, key = (req) => req.ip, message }) {
 }
 
 // Google Maps needs its own hosts (and, per Google's CSP guide, inline/eval for its loader),
-// so those are only allowed when a Maps key is configured. The open map only needs tile images
-// (img-src https:); its place search goes through our own /api/geo proxy.
+// so those are only allowed when a Maps key is configured. The open map (MapLibre + OpenFreeMap)
+// needs its vector tiles/fonts/sprites and a web worker; its place search goes through /api/geo.
 function buildCsp(google) {
   const g = google;
   return [
@@ -37,8 +37,9 @@ function buildCsp(google) {
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' https: data: blob:",
-    `connect-src 'self' ws: wss:${g ? ' https://*.googleapis.com *.google.com https://*.gstatic.com data: blob:' : ''}`,
-    ...(g ? ['worker-src blob:', 'frame-src *.google.com'] : []),
+    `connect-src 'self' ws: wss: https://tiles.openfreemap.org${g ? ' https://*.googleapis.com *.google.com https://*.gstatic.com data: blob:' : ''}`,
+    "worker-src 'self' blob:",
+    ...(g ? ['frame-src *.google.com'] : []),
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

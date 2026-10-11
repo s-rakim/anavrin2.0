@@ -15,7 +15,7 @@ import { OrderSteps } from '../../components/OrderTracker';
 import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
 import { RiderDeliveryMap } from '../../components/map/RiderDeliveryMap';
 import { useLocationSharing } from '../../components/map/useLocationSharing';
-import { distanceMeters, formatDistance, useMapConfig } from '../../lib/geo';
+import { distanceMeters, formatDistance, pinUrl, useMapConfig } from '../../lib/geo';
 
 /** Rider landing page: delivery count, buyer contact & directions, payment confirmation and delivery status. */
 export default function RiderHome() {
@@ -178,9 +178,12 @@ export default function RiderHome() {
                       <p className="mt-3 text-sm text-ink-soft">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</p>
                       <p className="mt-2 text-xs text-muted">Collect via {o.paymentMethod === 'mpesa' ? 'M-Pesa' : 'cash'} on delivery. Buyer contact and directions unlock when you accept.</p>
                       {o.approxDestination && (
-                        <p className="mt-2 text-xs font-medium text-brand-700">
-                          {me ? `About ${formatDistance(distanceMeters(me, o.approxDestination))} from you` : `Drop-off near ${o.approxDestination.lat.toFixed(2)}, ${o.approxDestination.lng.toFixed(2)}`}
-                          {mapConfig?.store && ` · ${formatDistance(distanceMeters(mapConfig.store, o.approxDestination))} from the store`}
+                        <p className="mt-2 flex flex-wrap items-center gap-x-2 text-xs font-medium text-brand-700">
+                          <span>
+                            {[me && `About ${formatDistance(distanceMeters(me, o.approxDestination))} from you`,
+                              mapConfig?.store && `${formatDistance(distanceMeters(mapConfig.store, o.approxDestination))} from the store`].filter(Boolean).join(' · ')}
+                          </span>
+                          <a href={pinUrl(o.approxDestination)} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">View area</a>
                         </p>
                       )}
                       <button className="btn btn-primary mt-4" disabled={busyId === o.id} onClick={() => act(o, 'claim', `You’ve accepted order ${o.code}.`)}>

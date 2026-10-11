@@ -105,11 +105,8 @@ export function LocationPicker({ value, onChange, error, store }) {
         fitKey={fitKey}
         onMapClick={(pos) => place(pos)}
       >
-        <form
-          className="absolute inset-x-3 top-3 z-[1100]"
-          role="search"
-          onSubmit={(e) => { e.preventDefault(); runSearch(query); }}
-        >
+        {/* Not a <form>: this sits inside the checkout form, and Enter here must never submit the order. */}
+        <div className="absolute inset-x-3 top-3 z-[1100]" role="search">
           <div className="flex items-center gap-2 rounded-full bg-white px-4 shadow-[0_1px_3px_rgb(60_64_67/0.3),0_4px_8px_3px_rgb(60_64_67/0.15)]">
             <Search className="size-4 shrink-0 text-[#5f6368]" aria-hidden />
             <input
@@ -117,6 +114,8 @@ export function LocationPicker({ value, onChange, error, store }) {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search estate, building or landmark"
               aria-label="Search for your delivery location"
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runSearch(query); } }}
+              enterKeyHint="search"
               className="h-12 min-w-0 flex-1 bg-transparent text-[15px] text-[#202124] placeholder:text-[#5f6368] focus:outline-none"
             />
             {searching ? <Spinner className="size-4 text-[#5f6368]" /> : query && (
@@ -124,7 +123,7 @@ export function LocationPicker({ value, onChange, error, store }) {
                 <X className="size-4" />
               </button>
             )}
-            {provider !== 'google' && <button type="submit" className="-mr-2 rounded-full px-3 py-1.5 text-sm font-semibold text-[#1a73e8] hover:bg-[#e8f0fe]">Search</button>}
+            {provider !== 'google' && <button type="button" onClick={() => runSearch(query)} className="-mr-2 rounded-full px-3 py-1.5 text-sm font-semibold text-[#1a73e8] hover:bg-[#e8f0fe]">Search</button>}
           </div>
           <AnimatePresence>
             {(results || searchError) && (
@@ -153,7 +152,7 @@ export function LocationPicker({ value, onChange, error, store }) {
               </motion.ul>
             )}
           </AnimatePresence>
-        </form>
+        </div>
 
         <div className="absolute right-3 bottom-8 z-[1100] flex flex-col gap-2">
           <MapFab onClick={locate} label="Use my current location">

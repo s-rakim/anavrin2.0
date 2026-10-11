@@ -5,7 +5,7 @@ import { useMapProvider } from './provider';
 
 // Each provider is its own bundle, loaded only when a map is on screen.
 const GoogleMapCanvas = lazy(() => import('./GoogleMapCanvas'));
-const LeafletMapCanvas = lazy(() => import('./LeafletMapCanvas'));
+const OpenMapCanvas = lazy(() => import('./OpenMapCanvas'));
 
 function MapSkeleton() {
   return (
@@ -32,7 +32,7 @@ export function MapCanvas({ className = 'h-72', label = 'Map', children, center 
         <Suspense fallback={<MapSkeleton />}>
           {provider === 'google'
             ? <GoogleMapCanvas key="google" apiKey={config.maps.googleApiKey} mapId={config.maps.googleMapId} center={center} {...props} />
-            : <LeafletMapCanvas key="open" center={center} {...props} />}
+            : <OpenMapCanvas key="open" center={center} {...props} />}
         </Suspense>
       )}
       {children}
