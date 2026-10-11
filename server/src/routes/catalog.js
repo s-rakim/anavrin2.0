@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { all } from '../db.js';
 import { getProduct, serializeProduct } from '../services.js';
-import { h, notFound } from '../util.js';
+import { STORE_LOCATION, h, notFound } from '../util.js';
 
 const router = Router();
 
@@ -40,6 +40,17 @@ router.get('/products/:id', h((req, res) => {
 router.get('/categories', (req, res) => {
   const rows = all(`SELECT category AS name, COUNT(*) AS count FROM products WHERE active = 1 GROUP BY category ORDER BY category`);
   res.json({ categories: rows });
+});
+
+// Public settings the storefront needs at runtime (the Maps key is a browser key: restrict it by HTTP referrer).
+router.get('/config', (req, res) => {
+  res.json({
+    maps: {
+      googleApiKey: process.env.GOOGLE_MAPS_API_KEY || null,
+      googleMapId: process.env.GOOGLE_MAPS_MAP_ID || null,
+    },
+    store: STORE_LOCATION,
+  });
 });
 
 export default router;

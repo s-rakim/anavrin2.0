@@ -5,7 +5,8 @@ import { emit, rooms } from '../realtime.js';
 import {
   addOrderEvent, broadcastMovement, broadcastOrder, broadcastProduct, getOrder, listOrders, recordMovement,
 } from '../services.js';
-import { bad, deliveryFeeFor, forbidden, h, int, normalizeKePhone, notFound, orderCode, str } from '../util.js';
+import { STORE_LOCATION, bad, deliveryFeeFor, forbidden, h, int, latLng, normalizeKePhone, notFound, orderCode, str } from '../util.js';
+import { trailFor } from '../tracking.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('customer', 'admin'));
@@ -19,6 +20,9 @@ router.post('/', h((req, res) => {
   if (!phone) throw bad('Enter a valid Kenyan phone number, e.g. 0712 345 678.');
   const instructions = str(req.body.instructions, { required: true, max: 600, name: 'Delivery instructions' });
   const paymentMethod = req.body.paymentMethod === 'cash' ? 'cash' : 'mpesa';
+  // Map pin for the drop-off spot (optional so checkout still works if the map can't load).
+  const destination = latLng(req.body.destination, { kenya: true, name: 'Delivery pin' });
+  const destLabel = destination ? str(req.body.destination?.label, { max: 160, name: 'Pin label' }) || null : null;
 
   // Merge duplicate lines before validating stock.
   const wanted = new Map();
@@ -45,9 +49,10 @@ router.post('/', h((req, res) => {
     do code = orderCode(); while (one('SELECT id FROM orders WHERE code = ?', code));
 
     const id = run(
-      `INSERT INTO orders (code, user_id, phone, instructions, subtotal, delivery_fee, total, payment_method)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orders (code, user_id, phone, instructions, subtotal, delivery_fee, total, payment_method, dest_lat, dest_lng, dest_label)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       code, req.user.id, phone, instructions, subtotal, fee, subtotal + fee, paymentMethod,
+      destination?.lat ?? null, destination?.lng ?? null, destLabel,
     ).lastInsertRowid;
 
     const moves = [];
@@ -84,6 +89,12 @@ function ownOrder(req) {
 
 router.get('/:id', h((req, res) => {
   res.json({ order: ownOrder(req) });
+}));
+
+// Map data for the live tracker: the rider's breadcrumb trail and the pickup point.
+router.get('/:id/track', h((req, res) => {
+  const order = ownOrder(req);
+  res.json({ trail: trailFor(order.id), store: STORE_LOCATION });
 }));
 
 // Customer confirms they received the goods: closes the order.

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Redirect } from '../../components/Motion';
 import { AnimatePresence, motion } from 'motion/react';
-import { Boxes, ClipboardList, Database, LayoutDashboard, LogOut, Receipt, Store, UserCheck, Users } from 'lucide-react';
+import { Boxes, ClipboardList, Database, LayoutDashboard, LogOut, Map as MapIcon, Receipt, Store, UserCheck, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 import { api } from '../../lib/api';
@@ -43,6 +43,7 @@ export default function AdminLayout() {
   const items = [
     { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
     { to: '/admin/orders', label: 'Orders', icon: ClipboardList, badge: k?.awaitingConfirmation },
+    { to: '/admin/map', label: 'Live map', icon: MapIcon },
     { to: '/admin/inventory', label: 'Inventory', icon: Boxes, badge: k?.lowStock },
     { to: '/admin/stock', label: 'Live stock', icon: Database },
     { to: '/admin/riders', label: 'Riders', icon: UserCheck, badge: k?.pendingApplications },

@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { Banknote, Info, MessageSquareText, Phone, ShoppingBag, Smartphone } from 'lucide-react';
+import { Banknote, Info, MapPinned, MessageSquareText, Phone, ShoppingBag, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { deliveryFee, useCart } from '../context/CartContext';
 import { useToast } from '../context/ToastContext';
 import { api } from '../lib/api';
 import { isKePhone, money, phoneLocal } from '../lib/format';
+import { useMapConfig } from '../lib/geo';
+import { LocationPicker } from '../components/map/LocationPicker';
 import { Page, Redirect, Reveal } from '../components/Motion';
 import { EmptyState, Field, Spinner } from '../components/ui';
 
@@ -19,6 +21,8 @@ export default function Checkout() {
   const [phone, setPhone] = useState(phoneLocal(user?.phone) || '');
   const [instructions, setInstructions] = useState('');
   const [method, setMethod] = useState('mpesa');
+  const [destination, setDestination] = useState(null);
+  const mapConfig = useMapConfig();
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -42,6 +46,7 @@ export default function Checkout() {
     const errs = {};
     if (!isKePhone(phone)) errs.phone = 'Enter a Kenyan mobile number, e.g. 0712 345 678.';
     if (instructions.trim().length < 10) errs.instructions = 'Give the rider a bit more detail so they can find you.';
+    if (!destination) errs.destination = 'Drop a pin on the map so the rider can navigate to you.';
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true);
@@ -49,7 +54,7 @@ export default function Checkout() {
     try {
       const { order } = await api('/orders', {
         method: 'POST',
-        body: { items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })), phone, instructions, paymentMethod: method },
+        body: { items: lines.map((l) => ({ productId: l.productId, quantity: l.quantity })), phone, instructions, paymentMethod: method, destination },
       });
       clear();
       toast(`We’ll let you know the moment it’s confirmed.`, { title: `Order ${order.code} placed` });
@@ -101,6 +106,13 @@ export default function Checkout() {
                 </div>
               </Field>
             </div>
+          </Reveal>
+
+          <Reveal className="card p-6" delay={0.03}>
+            <h2 className="flex items-center gap-2 text-lg font-semibold"><MapPinned className="size-5 text-brand-600" aria-hidden /> Pin your drop-off point</h2>
+            <p className="mt-1 mb-4 text-sm text-muted">Search, tap the map or use your location. Your rider follows this pin in Google Maps.</p>
+            <LocationPicker value={destination} onChange={(d) => { setDestination(d); setErrors((e) => ({ ...e, destination: undefined })); }}
+              error={errors.destination} store={mapConfig?.store} />
           </Reveal>
 
           <Reveal className="card p-6" delay={0.05}>

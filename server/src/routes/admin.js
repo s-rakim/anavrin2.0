@@ -9,8 +9,9 @@ import {
   recordMovement, serializeProduct,
 } from '../services.js';
 import { restockOrderItems } from './orders.js';
+import { fleet, trailFor } from '../tracking.js';
 import { riderStats } from './rider.js';
-import { bad, h, int, notFound, str } from '../util.js';
+import { STORE_LOCATION, bad, h, int, notFound, str } from '../util.js';
 
 const router = Router();
 router.use(requireAuth, requireRole('admin'));
@@ -228,6 +229,19 @@ router.post('/orders/:id/assign', h((req, res) => {
   run(`UPDATE orders SET rider_id = ?, status = 'assigned' WHERE id = ?`, rider.id, id);
   addOrderEvent(id, 'assigned', req.user.id, `Assigned to ${rider.name}`);
   res.json({ order: broadcastOrder(id, { previousRiderId: prevRider }) });
+}));
+
+// ---------- Live map ----------
+
+router.get('/fleet', h((req, res) => {
+  const orders = listOrders(`WHERE o.status IN ('placed','confirmed','assigned','out_for_delivery')`);
+  res.json({ riders: fleet(), orders, store: STORE_LOCATION });
+}));
+
+router.get('/orders/:id/track', h((req, res) => {
+  const id = Number(req.params.id);
+  if (!one('SELECT id FROM orders WHERE id = ?', id)) throw notFound('Order not found.');
+  res.json({ trail: trailFor(id), store: STORE_LOCATION });
 }));
 
 // ---------- People ----------

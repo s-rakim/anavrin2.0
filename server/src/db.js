@@ -125,7 +125,36 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_items_order   ON order_items(order_id);
   CREATE INDEX IF NOT EXISTS idx_events_order  ON order_events(order_id);
   CREATE INDEX IF NOT EXISTS idx_moves_product ON stock_movements(product_id);
+
+  -- Breadcrumb trail of a rider's GPS positions while carrying an order.
+  CREATE TABLE IF NOT EXISTS delivery_tracks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id   INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    rider_id   INTEGER NOT NULL REFERENCES users(id),
+    lat        REAL NOT NULL,
+    lng        REAL NOT NULL,
+    heading    REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_tracks_order ON delivery_tracks(order_id, id);
 `);
+
+/** Add a column to an existing table if it isn't there yet (lightweight migrations for older databases). */
+function ensureColumn(table, column, ddl) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+}
+
+// Delivery destination pinned by the shopper at checkout.
+ensureColumn('orders', 'dest_lat', 'REAL');
+ensureColumn('orders', 'dest_lng', 'REAL');
+ensureColumn('orders', 'dest_label', 'TEXT');
+// A rider's most recent shared GPS position.
+ensureColumn('users', 'last_lat', 'REAL');
+ensureColumn('users', 'last_lng', 'REAL');
+ensureColumn('users', 'last_heading', 'REAL');
+ensureColumn('users', 'last_accuracy', 'REAL');
+ensureColumn('users', 'last_location_at', 'TEXT');
 
 /** Run fn inside a transaction; rolls back on throw. */
 export function tx(fn) {

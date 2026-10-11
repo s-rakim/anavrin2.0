@@ -177,3 +177,49 @@
   html { scroll-behavior: auto; }
   .live-dot, .skeleton { animation: none; }
 }
+
+/* ---------- Map markers (shared by Google Maps and the open-map fallback) ---------- */
+.anv-mk { position: relative; display: flex; flex-direction: column; align-items: center; pointer-events: auto; }
+.anv-mk-dest svg, .anv-mk-order svg { filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.3)); }
+.anv-mk-dest { animation: anv-drop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1); transform-origin: bottom center; }
+@keyframes anv-drop { from { transform: translateY(-18px) scale(0.85); opacity: 0; } to { transform: none; opacity: 1; } }
+.anv-mk-label {
+  position: absolute; top: 100%; margin-top: 2px; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis;
+  padding: 2px 8px; border-radius: 999px; font: 600 11px/1.5 var(--font-sans); color: #202124;
+  background: #fff; box-shadow: 0 1px 3px rgb(60 64 67 / 0.3), 0 4px 8px rgb(60 64 67 / 0.15);
+}
+.anv-mk-label-puck { top: calc(50% + 20px); }
+.anv-mk-store { width: 40px; height: 40px; justify-content: center; }
+.anv-mk-store-dot {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px;
+  background: var(--color-brand-800); border: 2.5px solid #fff; box-shadow: 0 2px 6px rgb(0 0 0 / 0.3);
+}
+.anv-mk-puck { width: 64px; height: 64px; justify-content: center; }
+.anv-mk-halo {
+  position: absolute; inset: 14px; border-radius: 999px; background: rgb(26 115 232 / 0.22);
+  animation: anv-halo 2.2s ease-out infinite;
+}
+@keyframes anv-halo { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(1.9); opacity: 0; } }
+.anv-mk-beam {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 0 0;
+}
+.anv-mk-beam::before {
+  content: ""; position: absolute; left: -22px; top: -46px; width: 44px; height: 44px;
+  background: radial-gradient(circle at 50% 100%, rgb(26 115 232 / 0.45), rgb(26 115 232 / 0) 70%);
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+}
+.anv-mk-dot {
+  position: relative; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px;
+  background: #1a73e8; border: 3px solid #fff; box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
+}
+.anv-mk-puck.is-rider .anv-mk-dot { width: 28px; height: 28px; }
+.anv-mk-order { width: 30px; height: 38px; }
+
+/* Leaflet: no default box around our HTML markers; Google-like attribution chip. */
+.leaflet-div-icon.anv-leaflet-icon { background: none; border: 0; }
+.leaflet-container { font-family: var(--font-sans); background: #e8eaed; }
+.leaflet-control-attribution { font-size: 10px; border-radius: 6px 0 0 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .anv-mk-halo, .anv-mk-dest { animation: none; }
+}

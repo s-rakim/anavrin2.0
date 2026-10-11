@@ -13,6 +13,8 @@ import catalogRoutes from './routes/catalog.js';
 import orderRoutes from './routes/orders.js';
 import riderRoutes from './routes/rider.js';
 import adminRoutes from './routes/admin.js';
+import { attachTracking } from './tracking.js';
+import geoRoutes from './routes/geo.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.resolve(__dirname, '../../client/dist');
@@ -42,6 +44,7 @@ app.use('/api', catalogRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/rider', riderRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/geo', rateLimit({ windowMs: 60 * 1000, max: 30, message: 'Too many searches. Please wait a moment.' }), geoRoutes);
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Serve the built storefront in production.
@@ -62,5 +65,5 @@ app.use((err, req, res, next) => {
 });
 
 const server = http.createServer(app);
-initRealtime(server);
+initRealtime(server, { onUser: attachTracking });
 server.listen(PORT, () => console.log(`Anavrin API listening on http://localhost:${PORT}`));

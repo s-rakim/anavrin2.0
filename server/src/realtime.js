@@ -9,7 +9,8 @@ export const rooms = {
   user: (id) => `user:${id}`,
 };
 
-export function initRealtime(httpServer) {
+/** `onUser(socket, user)` lets other modules attach handlers for signed-in sockets. */
+export function initRealtime(httpServer, { onUser } = {}) {
   io = new Server(httpServer, { cors: { origin: true, credentials: true } });
 
   io.on('connection', (socket) => {
@@ -21,6 +22,7 @@ export function initRealtime(httpServer) {
     socket.join(rooms.user(user.id));
     if (user.role === 'admin') socket.join(rooms.admins);
     if (user.role === 'rider' && user.status === 'active') socket.join(rooms.riders);
+    onUser?.(socket, user);
   });
 
   return io;

@@ -7,6 +7,8 @@ import { useSocketEvent } from '../../lib/socket';
 import { STATUS, dateTime, money, phoneLocal, timeAgo } from '../../lib/format';
 import { LiquidSegmented } from '../../components/LiquidGlass';
 import { OrderSteps, OrderTimeline } from '../../components/OrderTracker';
+import { OrderTrackingMap } from '../../components/map/OrderTrackingMap';
+import { useMapConfig } from '../../lib/geo';
 import { Drawer, EmptyState, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
 import { AdminHeader } from './AdminLayout';
 
@@ -42,6 +44,8 @@ export default function Orders() {
 
   useSocketEvent('order:updated', (o) => setOrders((prev) => prev && (prev.some((x) => x.id === o.id) ? prev.map((x) => (x.id === o.id ? o : x)) : [o, ...prev])));
   useSocketEvent('stats:changed', () => api('/admin/riders').then((r) => setRiders(r.riders)).catch(() => {}));
+  useSocketEvent('order:location', (loc) => setOrders((prev) => prev && prev.map((o) => (o.id === loc.orderId
+    ? { ...o, riderLocation: { lat: loc.lat, lng: loc.lng, heading: loc.heading, at: loc.at } } : o))));
 
   const counts = useMemo(() => Object.fromEntries(FILTERS.map((f) => [f.value, (orders || []).filter(f.match).length])), [orders]);
   const visible = useMemo(() => {
@@ -105,6 +109,17 @@ export default function Orders() {
 
 function OrderDrawer({ order, riders, onClose, onUpdated, toast }) {
   const [busy, setBusy] = useState('');
+  const mapConfig = useMapConfig();
+  const [trail, setTrail] = useState([]);
+  useEffect(() => {
+    setTrail([]);
+    if (!order?.id || !order.destination) return;
+    api(`/admin/orders/${order.id}/track`).then((t) => setTrail(t.trail)).catch(() => {});
+  }, [order?.id, order?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const loc = order?.riderLocation;
+    if (loc && order.status === 'out_for_delivery') setTrail((t) => [...t, loc].slice(-500));
+  }, [order?.riderLocation?.at]); // eslint-disable-line react-hooks/exhaustive-deps
   const [riderId, setRiderId] = useState('');
   useEffect(() => { setRiderId(order?.rider?.id ? String(order.rider.id) : ''); }, [order?.id, order?.rider?.id]);
 
@@ -140,6 +155,9 @@ function OrderDrawer({ order, riders, onClose, onUpdated, toast }) {
         <div className="space-y-5 p-5">
           <div className="flex flex-wrap gap-2"><StatusBadge status={order.status} /><PaymentBadge status={order.paymentStatus} method={order.paymentMethod} /></div>
           <div className="card p-4"><OrderSteps status={order.status} /></div>
+          {order.destination ? (
+            <OrderTrackingMap order={order} trail={trail} store={mapConfig?.store} viewer="admin" className="h-64" />
+          ) : <p className="card p-4 text-sm text-muted">This order has no map pin (placed before pins were added).</p>}
 
           <section className="card space-y-2 p-4 text-sm">
             <p className="font-semibold">{order.customer.name} <span className="font-normal text-muted">· {order.customer.email}</span></p>

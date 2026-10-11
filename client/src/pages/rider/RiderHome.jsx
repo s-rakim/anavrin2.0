@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Banknote, Bike, CircleCheck, Hand, MessageCircle, MessageSquareText, Navigation, PackageCheck, PackageOpen, Phone, Smartphone, Wallet,
+  Banknote, Bike, CircleCheck, Hand, MapPinned, MessageCircle, MessageSquareText, Navigation, PackageCheck, PackageOpen, Phone, Smartphone, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -13,6 +13,9 @@ import { LiquidSegmented } from '../../components/LiquidGlass';
 import { CountUp, Page, Redirect, Reveal } from '../../components/Motion';
 import { OrderSteps } from '../../components/OrderTracker';
 import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
+import { RiderDeliveryMap } from '../../components/map/RiderDeliveryMap';
+import { useLocationSharing } from '../../components/map/useLocationSharing';
+import { distanceMeters, formatDistance, useMapConfig } from '../../lib/geo';
 
 /** Rider landing page: delivery count, buyer contact & directions, payment confirmation and delivery status. */
 export default function RiderHome() {
@@ -63,6 +66,17 @@ export default function RiderHome() {
   useSocketEvent('order:removed', ({ id }) => { setMine((prev) => prev && prev.filter((x) => x.id !== id)); loadSummary(); });
 
   const active = useMemo(() => (mine || []).filter((o) => ['assigned', 'out_for_delivery'].includes(o.status)), [mine]);
+  const mapConfig = useMapConfig();
+  const [sharePref, setSharePref] = useState(() => {
+    try { return localStorage.getItem('anavrin.shareLocation') !== 'off'; } catch { return true; }
+  });
+  const toggleShare = () => setSharePref((v) => {
+    try { localStorage.setItem('anavrin.shareLocation', v ? 'off' : 'on'); } catch { /* storage unavailable */ }
+    return !v;
+  });
+  // GPS is shared only while the rider is carrying an order and has sharing switched on.
+  const sharing = useLocationSharing(sharePref && active.length > 0);
+  const me = sharing.position;
   const done = useMemo(() => (mine || []).filter((o) => ['delivered', 'received'].includes(o.status)), [mine]);
 
   if (!user) return <Redirect to="/login" replace />;
@@ -115,6 +129,8 @@ export default function RiderHome() {
         ))}
       </motion.ul>
 
+      <LocationBanner sharing={sharing} enabled={sharePref} hasActive={active.length > 0} onToggle={toggleShare} />
+
       <div className="sticky top-[88px] z-20 mt-8 py-2">
         <LiquidSegmented value={tab} onChange={setTab} options={[
           { value: 'active', label: 'My deliveries', count: active.length },
@@ -138,7 +154,7 @@ export default function RiderHome() {
               <motion.div layout className="space-y-5">
                 <AnimatePresence initial={false}>
                   {active.map((o) => (
-                    <DeliveryCard key={o.id} order={o} busy={busyId === o.id}
+                    <DeliveryCard key={o.id} order={o} busy={busyId === o.id} me={me} store={mapConfig?.store}
                       onPickup={() => act(o, 'pickup', `Order ${o.code} is now on the way.`)}
                       onPay={() => setPaying(o)}
                       onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)} />
@@ -161,6 +177,12 @@ export default function RiderHome() {
                       </div>
                       <p className="mt-3 text-sm text-ink-soft">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</p>
                       <p className="mt-2 text-xs text-muted">Collect via {o.paymentMethod === 'mpesa' ? 'M-Pesa' : 'cash'} on delivery. Buyer contact and directions unlock when you accept.</p>
+                      {o.approxDestination && (
+                        <p className="mt-2 text-xs font-medium text-brand-700">
+                          {me ? `About ${formatDistance(distanceMeters(me, o.approxDestination))} from you` : `Drop-off near ${o.approxDestination.lat.toFixed(2)}, ${o.approxDestination.lng.toFixed(2)}`}
+                          {mapConfig?.store && ` · ${formatDistance(distanceMeters(mapConfig.store, o.approxDestination))} from the store`}
+                        </p>
+                      )}
                       <button className="btn btn-primary mt-4" disabled={busyId === o.id} onClick={() => act(o, 'claim', `You’ve accepted order ${o.code}.`)}>
                         {busyId === o.id ? <Spinner /> : <Hand className="size-4" aria-hidden />} Accept delivery
                       </button>
@@ -196,7 +218,7 @@ export default function RiderHome() {
   );
 }
 
-function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
+function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, me, store }) {
   const paid = order.paymentStatus === 'paid';
   const wa = `https://wa.me/${phoneDigits(order.phone)}?text=${encodeURIComponent(`Hi ${order.customer.name.split(' ')[0]}, this is your Anavrin rider with order ${order.code}.`)}`;
   return (
@@ -241,6 +263,8 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
           </div>
         </div>
       </div>
+
+      {order.destination && <div className="px-5 pb-5"><RiderDeliveryMap order={order} me={me} store={store} /></div>}
 
       <div className="px-5 pb-4"><OrderSteps status={order.status} compact /></div>
 
@@ -318,5 +342,28 @@ function PaymentModal({ order, onClose, onDone }) {
         </form>
       )}
     </Modal>
+  );
+}
+
+function LocationBanner({ sharing, enabled, hasActive, onToggle }) {
+  const tone = sharing.status === 'denied' || sharing.status === 'unsupported' ? 'danger'
+    : sharing.status === 'sharing' ? 'ok' : 'neutral';
+  const text = !hasActive
+    ? 'Live location turns on automatically when you have a delivery.'
+    : !enabled ? 'Location sharing is off. Customers can’t see you on the map.'
+    : sharing.status === 'sharing' ? 'Sharing your live location with the customers you’re delivering to.'
+    : sharing.error || 'Starting GPS…';
+  const colors = { ok: 'border-ok-700/20 bg-ok-100 text-ok-700', danger: 'border-danger-700/20 bg-danger-100 text-danger-700', neutral: 'border-silver-300 bg-white text-ink-soft' };
+  return (
+    <div className={`mt-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${colors[tone]}`} role="status">
+      <MapPinned className="size-5 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1 font-medium">{text}</span>
+      <button type="button" role="switch" aria-checked={enabled} onClick={onToggle}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${enabled ? 'bg-ok-700' : 'bg-silver-400'}`}>
+        <span className="sr-only">Share live location</span>
+        <motion.span layout transition={{ type: 'spring', stiffness: 600, damping: 32 }}
+          className={`absolute top-1 size-5 rounded-full bg-white shadow ${enabled ? 'right-1' : 'left-1'}`} />
+      </button>
+    </div>
   );
 }
