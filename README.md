@@ -44,10 +44,40 @@ Nobody can sign up as an admin. You can:
 - promote or demote accounts from **Admin → People**, or
 - run `npm run make-admin -- someone@example.com` (add a password to create a new admin account).
 
+## Maps and live tracking
+
+- **Checkout:** the shopper drops a pin on the map. They can search a place, tap the map, drag the red pin or use their phone's location. The pin is required and must be in Kenya.
+- **Shopper tracking:** the shopper's home page shows the store, their pin and the rider moving live, with the route travelled so far, the distance and an approximate arrival time.
+- **Riders:** while carrying an order, a rider's phone shares its GPS position (there's an on/off switch). Each delivery card shows a map and a **Navigate in Google Maps** button. It opens turn-by-turn directions in the Google Maps app, motorbike mode where Google offers it, going first to the store and then to the customer. Riders only see a rough area for a job until they accept it.
+- **Admins:** **Admin → Live map** shows every rider's position and every open order's pin. The order drawer shows the same live map for one order.
+
+### Choosing a map
+
+| Setting | What you get |
+| --- | --- |
+| `GOOGLE_MAPS_API_KEY` set | Google Maps (current vector maps, Advanced Markers), Google place search and address lookup |
+| Not set (default) | A free open map ([OpenFreeMap](https://openfreemap.org), OpenStreetMap data) with the same pins, lines and live tracking |
+
+If the Google key is rejected (wrong key, billing off, site not allowed), every map switches to the open map automatically.
+
+**Google setup:**
+1. Create a key in Google Cloud.
+2. Enable **Maps JavaScript API**, **Places API (New)** and **Geocoding API**.
+3. Restrict the key to your website's address.
+4. Optionally create a **Map ID** and set `GOOGLE_MAPS_MAP_ID`.
+
+**Open-map search:** without a Google key, place search uses the public OpenStreetMap Nominatim service through the server. Its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) allows one request per second for the whole app and no search-as-you-type. The server enforces both, caches results, and identifies itself with `NOMINATIM_CONTACT`. That is fine for testing and light use; for real traffic, add a Google key or point `NOMINATIM_URL` at your own geocoder.
+
+**Things to know:**
+- Phones only share location on **HTTPS** sites (or `localhost`).
+- A web page can't track a rider in the background. Riders should keep the Anavrin page open, with the screen on, while delivering.
+- Set the store's position with `STORE_LAT`, `STORE_LNG` and `STORE_NAME`.
+
 ## How it fits together
 
 ```
-client/   React + Vite + Tailwind storefront and portals (motion for animation, Recharts for charts)
+client/   React + Vite + Tailwind storefront and portals (motion for animation, Recharts for charts,
+          Google Maps via @vis.gl/react-google-maps or MapLibre + OpenFreeMap)
 server/   Express API + Socket.IO + SQLite (node:sqlite), JWT auth
   src/routes/auth.js      sign up, rider applications, single login
   src/routes/catalog.js   public products and categories
@@ -55,6 +85,8 @@ server/   Express API + Socket.IO + SQLite (node:sqlite), JWT auth
   src/routes/rider.js     rider dashboard, accept, pick up, confirm payment, deliver
   src/routes/admin.js     overview, inventory, images, restock, orders, people, hiring, transactions
   src/realtime.js         socket rooms: admins, riders, and one per user
+  src/tracking.js         rider GPS stream, delivery trails, admin fleet positions
+  src/routes/geo.js       open-map place search proxy (Nominatim, rate limited and cached)
 ```
 
 Order flow: **placed → confirmed (admin) → rider assigned → on the way → delivered (rider, after payment) → received (shopper)**. Stock is reserved at checkout and returned on cancellation; every change is logged in `stock_movements`.

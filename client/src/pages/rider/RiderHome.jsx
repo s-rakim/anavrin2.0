@@ -354,7 +354,7 @@ function LocationBanner({ sharing, enabled, hasActive, onToggle }) {
   const text = !hasActive
     ? 'Live location turns on automatically when you have a delivery.'
     : !enabled ? 'Location sharing is off. Customers can’t see you on the map.'
-    : sharing.status === 'sharing' ? 'Sharing your live location with the customers you’re delivering to.'
+    : sharing.status === 'sharing' ? 'Sharing your live location with your customers. Keep this page open while you ride.'
     : sharing.error || 'Starting GPS…';
   const colors = { ok: 'border-ok-700/20 bg-ok-100 text-ok-700', danger: 'border-danger-700/20 bg-danger-100 text-danger-700', neutral: 'border-silver-300 bg-white text-ink-soft' };
   return (

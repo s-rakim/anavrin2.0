@@ -54,9 +54,31 @@ export function useLocationSharing(enabled) {
       if (lastPos.current && Date.now() - lastSent.current >= HEARTBEAT_MS) send(lastPos.current);
     }, 5000);
 
+    // Browsers pause GPS when the screen sleeps, so keep it awake while delivering (where supported).
+    let wakeLock = null;
+    let stopped = false;
+    const keepAwake = async () => {
+      if (stopped || document.visibilityState !== 'visible' || !('wakeLock' in navigator)) return;
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (stopped) lock.release().catch(() => {}); // sharing ended while the request was pending
+        else wakeLock = lock;
+      } catch { /* denied or unsupported */ }
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      keepAwake();
+      if (lastPos.current) send(lastPos.current); // resume promptly after the rider comes back
+    };
+    keepAwake();
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
+      stopped = true;
       navigator.geolocation.clearWatch(watchId);
       clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', onVisible);
+      wakeLock?.release().catch(() => {});
     };
   }, [enabled]);
 
