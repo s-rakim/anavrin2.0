@@ -3,12 +3,14 @@ import { LngLatBounds, Map as MlMap, Marker, setWorkerUrl } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { MARKER_GEOMETRY, markerHtml } from './markers';
+import { markOpenMapFailed } from './provider';
 
 setWorkerUrl(workerUrl);
 
 // OpenFreeMap: free vector tiles from OpenStreetMap data, no API key, commercial use allowed.
 const STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 const PATHS_SOURCE = 'anv-paths';
+const STYLE_TIMEOUT_MS = 30000;
 
 /** Nudge the open style towards the current Google Maps palette (paler land, blue water, soft parks). */
 function googleTint(map) {
@@ -23,7 +25,7 @@ function googleTint(map) {
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, gestures = 'cooperative', onReady }) {
+export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, fitPadding = 56, panTo, interactive = true, gestures = 'cooperative', onReady }) {
   const container = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map()); // id -> { marker, html, draggable, props }
@@ -47,7 +49,20 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
       fadeDuration: 150,
     });
     map.touchZoomRotate?.disableRotation?.();
-    map.on('click', (e) => latest.current.onMapClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }));
+    // A map whose style never arrives is a blank grey box: report it so pages fall back (search,
+    // "use my location", optional pin) instead of asking people to tap something they can't see.
+    let styleLoaded = false;
+    const styleTimer = setTimeout(() => { if (!styleLoaded) markOpenMapFailed('timed out', { retryable: true }); }, STYLE_TIMEOUT_MS);
+    map.on('style.load', () => { styleLoaded = true; clearTimeout(styleTimer); });
+    map.on('error', (e) => { if (!styleLoaded && !e.sourceId) markOpenMapFailed(e.error?.message || 'style error', { retryable: true }); });
+    map.on('click', (e) => { if (loaded.current) latest.current.onMapClick?.({ lat: e.lngLat.lat, lng: e.lngLat.lng }); });
+    // Keyboard: arrows pan, +/- zoom (built in); Enter picks the point at the centre of the map.
+    map.getCanvas().addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !loaded.current || !latest.current.onMapClick) return;
+      e.preventDefault();
+      const c = map.getCenter();
+      latest.current.onMapClick({ lat: c.lat, lng: c.lng });
+    });
     map.on('load', () => {
       googleTint(map);
       map.addSource(PATHS_SOURCE, { type: 'geojson', data: toGeoJson(latest.current.paths) });
@@ -72,6 +87,7 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
     mapRef.current = map;
     const refs = markerRefs.current;
     return () => {
+      clearTimeout(styleTimer);
       resize.disconnect();
       refs.forEach(({ marker }) => marker.remove());
       refs.clear();
@@ -108,6 +124,9 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
       if (entry.html !== html) { entry.el.innerHTML = html; entry.html = html; }
       entry.el.style.zIndex = String(m.zIndex || 0);
       entry.el.style.cursor = m.onClick ? 'pointer' : m.draggable ? 'grab' : '';
+      // The map allows page scrolling on touch (cooperative gestures); a finger on a draggable pin
+      // must move the pin, not scroll the page.
+      entry.el.style.touchAction = m.draggable ? 'none' : '';
       if (m.title) entry.el.setAttribute('aria-label', m.title);
     });
     refs.forEach((entry, id) => { if (!seen.has(id)) { entry.marker.remove(); refs.delete(id); } });
@@ -130,7 +149,7 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
     else {
       const b = new LngLatBounds();
       pts.forEach((p) => b.extend([p.lng, p.lat]));
-      map.fitBounds(b, { padding: 56, maxZoom: 16, duration });
+      map.fitBounds(b, { padding: fitPadding, maxZoom: 16, duration });
     }
   }, [fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
 

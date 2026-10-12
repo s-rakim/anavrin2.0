@@ -1,7 +1,7 @@
 import { Component, Suspense, lazy, useEffect } from 'react';
 import { MapPinned, MapPinOff } from 'lucide-react';
 import { NAIROBI } from '../../lib/geo';
-import { markGoogleFailed, markOpenMapFailed, useMapProvider } from './provider';
+import { markGoogleFailed, markOpenMapFailed, retryOpenMap, useMapProvider } from './provider';
 
 // Each provider is its own bundle, loaded only when a map is on screen.
 const GoogleMapCanvas = lazy(() => import('./GoogleMapCanvas'));
@@ -15,11 +15,12 @@ function MapSkeleton() {
   );
 }
 
-function MapUnavailable() {
+function MapUnavailable({ canRetry }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[#eef0f2] px-8 text-center">
       <MapPinOff className="size-7 text-silver-500" aria-hidden />
-      <p className="text-sm font-medium text-ink-soft">The map can’t be shown on this device.</p>
+      <p className="text-sm font-medium text-ink-soft">{canRetry ? 'The map couldn’t load. Check your connection.' : 'The map can’t be shown on this device.'}</p>
+      {canRetry && <button type="button" onClick={retryOpenMap} className="btn btn-secondary btn-sm">Try again</button>}
     </div>
   );
 }
@@ -45,16 +46,18 @@ class MapErrorBoundary extends Component {
  *
  * markers: [{ id, kind: 'destination'|'store'|'rider'|'me'|'order', position, label, heading, status, stale, draggable, onDragEnd, onClick, zIndex }]
  * paths:   [{ id, points: [{lat,lng}], color, width, dashed }]
- * fitPoints + fitKey: fit the camera to these points whenever fitKey changes.
+ * fitPoints + fitKey: fit the camera to these points whenever fitKey changes. fitPadding: px, or
+ *   { top, right, bottom, left } to keep fitted points clear of overlay cards.
+ * onMapClick(latLng): a tap on the map, or Enter on the focused map (picks its centre).
  * panTo: { lat, lng, key } pans whenever key changes.
  * onAvailability(bool): told whether a map can be shown at all.
  */
 export function MapCanvas({ className = 'h-72', label = 'Map', children, center = NAIROBI, onAvailability, ...props }) {
-  const { provider, config } = useMapProvider();
+  const { provider, config, canRetry } = useMapProvider();
   useEffect(() => { if (provider) onAvailability?.(provider !== 'none'); }, [provider]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className={`relative isolate overflow-hidden rounded-2xl bg-[#e8eaed] ${className}`} role="region" aria-label={label}>
-      {!provider ? <MapSkeleton /> : provider === 'none' ? <MapUnavailable /> : (
+      {!provider ? <MapSkeleton /> : provider === 'none' ? <MapUnavailable canRetry={canRetry} /> : (
         <MapErrorBoundary provider={provider}>
           <Suspense fallback={<MapSkeleton />}>
             {provider === 'google'

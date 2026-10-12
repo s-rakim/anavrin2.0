@@ -4,8 +4,11 @@ import { Crosshair, Navigation, PauseCircle, Store } from 'lucide-react';
 import { LIVE_STALE_MS, ageMs, distanceMeters, etaMinutes, formatDistance, useAnimatedPosition, useNow } from '../../lib/geo';
 import { timeAgo } from '../../lib/format';
 import { MapCanvas, MapFab } from './MapCanvas';
+import { googleSafe, useMapProvider } from './provider';
 
 const RIDER_BLUE = '#1a73e8';
+// Keep fitted points clear of the recenter button (top right) and the status card (bottom).
+const FIT_PADDING = { top: 64, right: 64, bottom: 112, left: 40 };
 
 /**
  * Live delivery map: pickup point, the shopper's pin, the rider gliding along their trail,
@@ -18,25 +21,26 @@ export function OrderTrackingMap({ order, trail = [], store, viewer = 'customer'
   const live = order.riderLocation && ['assigned', 'out_for_delivery'].includes(order.status) ? order.riderLocation : null;
   const stale = !!live && ageMs(live.at, now) > LIVE_STALE_MS;
   const rider = useAnimatedPosition(live);
-  const dest = order.destination;
+  const { provider } = useMapProvider();
+  const dest = googleSafe(order.destination, provider);
 
   const remaining = live && dest ? distanceMeters(live, dest) : null;
   const eta = etaMinutes(remaining);
   // Always current; the map only re-fits when the fit key changes (button press, rider appears/disappears).
-  const fitPoints = [dest, live || (order.status !== 'out_for_delivery' ? store : null)].filter(Boolean);
+  const fitPoints = [dest?.onMap && dest, live || (order.status !== 'out_for_delivery' ? store : null)].filter(Boolean);
   const autoFitKey = `${fitKey}-${live ? 'rider' : 'none'}-${order.status}`;
 
   if (!dest) return null;
 
   const markers = [
     store && { id: 'store', kind: 'store', position: store, title: store.name },
-    { id: 'dest', kind: 'destination', position: dest, zIndex: 5, label: viewer === 'customer' ? 'You' : order.customer?.name?.split(' ')[0], title: dest.label || 'Drop-off point' },
+    dest.onMap && { id: 'dest', kind: 'destination', position: dest, zIndex: 5, label: viewer === 'customer' ? 'You' : order.customer?.name?.split(' ')[0], title: dest.label || 'Drop-off point' },
     rider && { id: 'rider', kind: 'rider', position: rider, heading: stale ? null : live?.heading, stale, zIndex: 10, label: order.rider?.name?.split(' ')[0], title: `${order.rider?.name || 'Rider'}${stale ? ' (location paused)' : ''}` },
   ].filter(Boolean);
 
   const paths = [
     trail.length > 1 && { id: 'trail', points: [...trail, ...(rider ? [rider] : [])], color: RIDER_BLUE, width: 5 },
-    rider && order.status === 'out_for_delivery' && { id: 'rest', points: [rider, dest], color: RIDER_BLUE, width: 4, dashed: true },
+    rider && dest.onMap && order.status === 'out_for_delivery' && { id: 'rest', points: [rider, dest], color: RIDER_BLUE, width: 4, dashed: true },
     rider && order.status === 'assigned' && store && { id: 'to-store', points: [rider, store], color: '#5f6368', width: 4, dashed: true },
   ].filter(Boolean);
 
@@ -57,8 +61,8 @@ export function OrderTrackingMap({ order, trail = [], store, viewer = 'customer'
   })();
 
   return (
-    <MapCanvas className={className} label={`Delivery map for order ${order.code}`} center={dest} zoom={14}
-      markers={markers} paths={paths} fitPoints={fitPoints} fitKey={autoFitKey}>
+    <MapCanvas className={className} label={`Delivery map for order ${order.code}`} center={dest.onMap ? dest : live || store || dest} zoom={14}
+      markers={markers} paths={paths} fitPoints={fitPoints} fitKey={autoFitKey} fitPadding={FIT_PADDING}>
       <div className="absolute top-3 right-3 z-[1100]">
         <MapFab onClick={() => setFitKey((k) => k + 1)} label="Recenter map"><Crosshair className="size-5" /></MapFab>
       </div>

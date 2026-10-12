@@ -50,7 +50,14 @@ export default function Checkout() {
     // The pin is required wherever a map can be shown; on devices that can't show one it's optional.
     if (!destination && mapAvailable) errs.destination = 'Drop a pin on the map so the rider can navigate to you.';
     setErrors(errs);
-    if (Object.keys(errs).length) return;
+    const first = ['phone', 'instructions', 'destination'].find((k) => errs[k]);
+    if (first) {
+      // On a phone the first problem is usually far above the button: bring it into view.
+      const el = document.getElementById(first === 'destination' ? 'pin-picker' : first);
+      el?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+      if (first !== 'destination') el?.focus({ preventScroll: true });
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -84,7 +91,7 @@ export default function Checkout() {
         <h1 className="section-title mt-1">Where should we bring it?</h1>
       </Reveal>
 
-      <form onSubmit={submit} noValidate className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <form onSubmit={submit} noValidate className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div className="space-y-6">
           <Reveal className="card p-6">
             <h2 className="flex items-center gap-2 text-lg font-semibold"><Phone className="size-5 text-brand-600" aria-hidden /> Delivery contact</h2>
@@ -113,8 +120,10 @@ export default function Checkout() {
           <Reveal className="card p-6" delay={0.03}>
             <h2 className="flex items-center gap-2 text-lg font-semibold"><MapPinned className="size-5 text-brand-600" aria-hidden /> Pin your drop-off point</h2>
             <p className="mt-1 mb-4 text-sm text-muted">Search, tap the map or use your location. Your rider follows this pin in Google Maps.</p>
-            <LocationPicker value={destination} onChange={(d) => { setDestination(d); setErrors((e) => ({ ...e, destination: undefined })); }}
-              error={errors.destination} store={mapConfig?.store} onAvailability={setMapAvailable} />
+            <div id="pin-picker">
+              <LocationPicker value={destination} onChange={(d) => { setDestination(d); setErrors((e) => ({ ...e, destination: undefined })); }}
+                error={errors.destination} store={mapConfig?.store} onAvailability={setMapAvailable} />
+            </div>
           </Reveal>
 
           <Reveal className="card p-6" delay={0.05}>
@@ -165,6 +174,9 @@ export default function Checkout() {
               {busy ? <><Spinner /> Placing order…</> : `Place order · ${money(subtotal + fee)}`}
             </button>
             {unavailable.length > 0 && <p className="mt-2 text-center text-xs text-danger-700">Update the quantities above to continue.</p>}
+            {Object.values(errors).some(Boolean) && (
+              <p className="mt-2 text-center text-xs text-danger-700">{errors.destination && !errors.phone && !errors.instructions ? 'Drop your pin on the map above.' : 'Check the highlighted details above.'}</p>
+            )}
           </div>
         </Reveal>
       </form>

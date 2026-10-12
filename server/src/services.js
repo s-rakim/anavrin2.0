@@ -90,7 +90,11 @@ function shapeOrder(o) {
     updatedAt: o.updated_at,
     customer: { id: o.user_id, name: o.customer_name, email: o.customer_email },
     rider: o.rider_id ? { id: o.rider_id, name: o.rider_name, phone: o.rider_phone } : null,
-    destination: o.dest_lat != null ? { lat: o.dest_lat, lng: o.dest_lng, label: o.dest_label || null } : null,
+    // googleLabel/googlePoint: came from Google search or address lookup, so may only be shown on a Google map.
+    destination: o.dest_lat != null ? {
+      lat: o.dest_lat, lng: o.dest_lng, label: o.dest_label || null,
+      googleLabel: !!o.dest_label_google, googlePoint: !!o.dest_point_google,
+    } : null,
     riderLocation: riderLocationFor(o),
     // On the way, but the rider is dropping off someone else first: no coordinates are shared.
     riderOnAnotherStop: o.status === 'out_for_delivery' && !!o.rider_id && o.rider_current_order_id !== o.id,

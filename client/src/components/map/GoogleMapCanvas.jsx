@@ -12,7 +12,7 @@ if (typeof window !== 'undefined') {
 
 const DASHED = [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3 }, offset: '0', repeat: '14px' }];
 
-function Controller({ fitPoints, fitKey, panTo }) {
+function Controller({ fitPoints, fitKey, fitPadding, panTo, onMapClick }) {
   const map = useMap();
   const first = useRef(true);
   useEffect(() => {
@@ -25,11 +25,25 @@ function Controller({ fitPoints, fitKey, panTo }) {
     } else {
       const bounds = new window.google.maps.LatLngBounds();
       pts.forEach((p) => bounds.extend(p));
-      map.fitBounds(bounds, 56);
+      map.fitBounds(bounds, fitPadding);
     }
     first.current = false;
   }, [map, fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (map && panTo) map.panTo(panTo); }, [map, panTo?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Keyboard: arrows pan and +/- zoom (built in); Enter on the map itself picks the point at its centre.
+  const pick = useRef(onMapClick);
+  pick.current = onMapClick;
+  useEffect(() => {
+    if (!map) return undefined;
+    const div = map.getDiv();
+    const onKey = (e) => {
+      if (e.key !== 'Enter' || !pick.current || e.target.closest('gmp-advanced-marker, button, a, input')) return;
+      e.preventDefault();
+      pick.current(map.getCenter().toJSON());
+    };
+    div.addEventListener('keydown', onKey);
+    return () => div.removeEventListener('keydown', onKey);
+  }, [map]);
   return null;
 }
 
@@ -43,7 +57,7 @@ function FailureWatch({ onReady }) {
   return null;
 }
 
-export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, gestures = 'cooperative', onReady }) {
+export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, fitPadding = 56, panTo, interactive = true, gestures = 'cooperative', onReady }) {
   return (
     <APIProvider apiKey={apiKey} version="weekly" region="KE" language="en" libraries={['marker', 'places', 'geocoding']}
       onError={() => markGoogleFailed('load error')}>
@@ -74,7 +88,7 @@ export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, mark
             </AdvancedMarker>
           );
         })}
-        <Controller fitPoints={fitPoints} fitKey={fitKey} panTo={panTo} />
+        <Controller fitPoints={fitPoints} fitKey={fitKey} fitPadding={fitPadding} panTo={panTo} onMapClick={onMapClick} />
       </Map>
     </APIProvider>
   );

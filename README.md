@@ -90,13 +90,15 @@ Nobody can sign up as an admin. You can:
 - **Privacy:**
   - Only the customer whose delivery is under way *right now* sees the rider live.
   - Customers waiting for pickup, or queued behind another drop-off, see "Your rider is finishing another delivery" and no location.
-  - Riders carrying several orders pick which one they're heading to ("Deliver this one next").
+  - Riders carrying several orders pick which one they're heading to ("Deliver this one next"). Until they do, no customer sees them.
+  - Admins (dispatch) always see riders who are sharing their location, and riders are told so.
   - A customer can't see the rider's route after their order is delivered.
   - Delivery trails are deleted 30 days after an order ends, and a rider's last position after 7 days.
 - **Failed deliveries:**
   - A rider can mark an order **Couldn't deliver**, with a reason. The order goes back to the store and the pool.
   - Admins can cancel an unpaid order even while it's out for delivery; its stock is returned.
-- **When the rider's location goes quiet** (phone locked, Google Maps app in front, weak signal), the customer sees "Rider's live location paused" with when they were last seen, not a stale arrival time.
+- **When the rider's location goes quiet** (phone locked, Google Maps app in front, weak signal), the customer sees "Rider's live location paused" with when they were last seen, not a stale arrival time. Riders are reminded of this under the Navigate button.
+- **If the map can't load** (no connection to the map server), checkout says so with a Try again button, and the pin becomes optional; search and "use my location" still work.
 - **Admins:** **Admin → Live map** shows every rider's position and every open order's pin. The order drawer shows the same live map for one order.
 
 ### Choosing a map
@@ -122,7 +124,7 @@ If the Google key is rejected (wrong key, billing off, site not allowed), every 
 - Set the store's position with `STORE_LAT`, `STORE_LNG` and `STORE_NAME`.
 - **Devices without WebGL2:** some older budget phones can't draw the open map. They get a "map can't be shown" panel, but search and "use my location" still work, and the pin becomes optional for them.
 - **Security policy with Google Maps:** with a Google key set, the site's Content-Security-Policy allows only Google's Maps script hosts (no inline scripts). If a Google feature you enable later is blocked, set `CSP_GOOGLE_COMPAT=true` to use Google's full documented allowlist.
-- **Google's terms:** pin addresses and coordinates that came from Google search or address lookup are cleared after 30 days, as the Google Maps Platform terms require.
+- **Google's terms:** pin addresses and coordinates that came from Google search or address lookup are cleared after 30 days, as the Google Maps Platform terms require. They are only drawn on Google maps: after a fallback to the open map, those pins and place names are hidden (the Google Maps links still work).
 
 ## How it fits together
 

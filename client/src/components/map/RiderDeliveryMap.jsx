@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Crosshair, ExternalLink, Navigation } from 'lucide-react';
 import { directionsUrl, distanceMeters, etaMinutes, formatDistance, pinUrl } from '../../lib/geo';
 import { MapCanvas, MapFab } from './MapCanvas';
+import { googleSafe, useMapProvider } from './provider';
 
 /**
  * The rider's view of a delivery: their own position, the pickup point and the shopper's pin,
@@ -9,24 +10,25 @@ import { MapCanvas, MapFab } from './MapCanvas';
  */
 export function RiderDeliveryMap({ order, me, store }) {
   const [fitKey, setFitKey] = useState(0);
-  const dest = order.destination;
+  const { provider } = useMapProvider();
+  const dest = googleSafe(order.destination, provider);
   const headingToStore = order.status === 'assigned' && store;
   const target = headingToStore ? store : dest;
   const remaining = me && target ? distanceMeters(me, target) : null;
   // Always current; the map only re-fits when the key changes (button press, first GPS fix, leg change).
-  const fitPoints = [dest, me, headingToStore ? store : null].filter(Boolean);
+  const fitPoints = [dest?.onMap && dest, me, headingToStore ? store : null].filter(Boolean);
 
   if (!dest) return null;
   const markers = [
     store && { id: 'store', kind: 'store', position: store, title: store.name, label: headingToStore ? 'Pick up' : undefined },
-    { id: 'dest', kind: 'destination', position: dest, zIndex: 5, label: order.customer.name.split(' ')[0], title: dest.label || 'Drop-off' },
+    dest.onMap && { id: 'dest', kind: 'destination', position: dest, zIndex: 5, label: order.customer.name.split(' ')[0], title: dest.label || 'Drop-off' },
     me && { id: 'me', kind: 'me', position: me, heading: me.heading, zIndex: 10, title: 'You' },
   ].filter(Boolean);
-  const paths = me && target ? [{ id: 'leg', points: [me, target], color: '#1a73e8', width: 4, dashed: true }] : [];
+  const paths = me && target && (headingToStore || dest.onMap) ? [{ id: 'leg', points: [me, target], color: '#1a73e8', width: 4, dashed: true }] : [];
 
   return (
     <div>
-      <MapCanvas className="h-64 sm:h-72" label={`Map for order ${order.code}`} center={dest} zoom={14}
+      <MapCanvas className="h-64 sm:h-72" label={`Map for order ${order.code}`} center={dest.onMap ? dest : me || store || dest} zoom={14}
         markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${me ? 'gps' : 'none'}-${order.status}`}>
         <div className="absolute top-3 right-3 z-[1100]">
           <MapFab onClick={() => setFitKey((k) => k + 1)} label="Recenter map"><Crosshair className="size-5" /></MapFab>
@@ -46,7 +48,10 @@ export function RiderDeliveryMap({ order, me, store }) {
           <ExternalLink className="size-4" aria-hidden />
         </a>
       </div>
-      {dest.label && <p className="mt-2 text-[13px] text-muted">Pinned: {dest.label}</p>}
+      <p className="mt-2 text-[13px] text-muted">
+        Customers stop seeing you while Google Maps is in front. Switch back to Anavrin now and then, or use split screen.
+      </p>
+      {dest.label && <p className="mt-1 text-[13px] text-muted">Pinned: {dest.label}</p>}
     </div>
   );
 }

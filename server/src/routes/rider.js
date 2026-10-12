@@ -64,10 +64,13 @@ router.post('/orders/:id/pickup', h((req, res) => {
   if (order.status !== 'assigned') throw bad('Only newly assigned orders can be marked as on the way.');
   run(`UPDATE orders SET status = 'out_for_delivery' WHERE id = ?`, order.id);
   addOrderEvent(order.id, 'out_for_delivery', req.user.id);
-  // Starting a delivery makes it the rider's current stop: that customer now sees them live.
-  const changed = setCurrentStop(req.user.id, order.id).filter((id) => id !== order.id);
+  // A rider's only delivery becomes their current stop: that customer now sees them live. If they're
+  // already carrying others, we can't know who they'll visit first, so nobody sees them until they
+  // tap "Deliver this one next" (otherwise one customer could watch the rider at another's door).
+  const carrying = one(`SELECT COUNT(*) AS n FROM orders WHERE rider_id = ? AND status = 'out_for_delivery' AND id != ?`, req.user.id, order.id).n;
+  const changed = setCurrentStop(req.user.id, carrying ? null : order.id).filter((id) => id !== order.id);
   changed.forEach((id) => broadcastOrder(id));
-  res.json({ order: broadcastOrder(order.id) });
+  res.json({ order: broadcastOrder(order.id), chooseNext: carrying > 0 });
 }));
 
 // Carrying several orders: choose which customer you're heading to now (only they see you live).

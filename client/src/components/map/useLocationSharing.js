@@ -25,7 +25,8 @@ export function useLocationSharing(enabled) {
     const send = (p) => {
       lastSent.current = Date.now();
       const { at, ...fix } = p; // eslint-disable-line no-unused-vars
-      getSocket().emit('rider:location', fix, (ack) => {
+      // volatile: if the socket is reconnecting, drop the fix rather than replay it later as current.
+      getSocket().volatile.emit('rider:location', fix, (ack) => {
         if (ack && ack.ok === false) setState((s) => ({ ...s, error: ack.error || 'Location not accepted.' }));
       });
     };
@@ -57,7 +58,10 @@ export function useLocationSharing(enabled) {
     );
     const heartbeat = setInterval(() => {
       // Phones often stop producing fixes while standing still (e.g. waiting at the gate), so re-send
-      // the last fix from this session for a while; never one older than a few minutes.
+      // the last fix from this session for a while; never one older than a few minutes. Only while the
+      // page is on screen: a hidden page (Google Maps in front, screen locked) gets no new GPS fixes, so
+      // re-sending would show customers a frozen rider as live instead of "location paused".
+      if (document.visibilityState !== 'visible') return;
       const fresh = lastPos.current && Date.now() - lastPos.current.at < HEARTBEAT_MAX_AGE_MS;
       if (fresh && Date.now() - lastSent.current >= HEARTBEAT_MS) send(lastPos.current);
     }, 5000);
@@ -76,7 +80,10 @@ export function useLocationSharing(enabled) {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       keepAwake();
-      if (lastPos.current && Date.now() - lastPos.current.at < HEARTBEAT_MAX_AGE_MS) send(lastPos.current); // resume promptly
+      // Resume with the next real fix (sent immediately) rather than re-sending the one from before
+      // the page was hidden, which would put the rider back where they were.
+      lastPos.current = null;
+      lastSent.current = 0;
     };
     keepAwake();
     document.addEventListener('visibilitychange', onVisible);

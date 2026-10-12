@@ -87,11 +87,12 @@ export default function RiderHome() {
   const act = async (order, path, msg, body = {}) => {
     setBusyId(order.id);
     try {
-      const { order: updated } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body });
+      const { order: updated, chooseNext } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body });
       if (path === 'fail') setMine((prev) => prev.filter((x) => x.id !== order.id)); // back to the store and the pool
       else setMine((prev) => (prev.some((x) => x.id === updated.id) ? prev.map((x) => (x.id === updated.id ? updated : x)) : [updated, ...prev]));
       if (path === 'claim') { setPool((prev) => prev.filter((x) => x.id !== order.id)); setTab('active'); }
-      toast(msg);
+      if (chooseNext) toast('Tap “Deliver this one next” on the customer you’re heading to first. Until then, no customer sees you live.', { title: `Order ${order.code} is on the way`, type: 'info' });
+      else toast(msg);
       loadSummary();
     } catch (err) {
       toast(err.message, { type: 'error' });
@@ -154,13 +155,18 @@ export default function RiderHome() {
               </EmptyState></div>
             ) : (
               <motion.div layout className="space-y-5">
+                {active.filter((o) => o.status === 'out_for_delivery').length > 1 && active.every((o) => o.status !== 'out_for_delivery' || o.riderOnAnotherStop) && (
+                  <p role="status" className="rounded-2xl bg-warn-100 px-4 py-3 text-sm font-medium text-warn-700">
+                    Who are you heading to first? Tap “Deliver this one next” on that order so the customer can follow you live.
+                  </p>
+                )}
                 <AnimatePresence initial={false}>
                   {active.map((o) => (
                     <DeliveryCard key={o.id} order={o} busy={busyId === o.id} me={me} store={mapConfig?.store}
                       onPickup={() => act(o, 'pickup', `Order ${o.code} is now on the way.`)}
                       onPay={() => setPaying(o)}
                       onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)}
-                      onFocus={() => act(o, 'focus', `Heading to ${o.customer.name.split(' ')[0]} now. Only they can see you live.`)}
+                      onFocus={() => act(o, 'focus', `Heading to ${o.customer.name.split(' ')[0]} now. Only they and Anavrin dispatch can see you live.`)}
                       onFail={() => setFailing(o)}
                       multiple={active.filter((x) => x.status === 'out_for_delivery').length > 1} />
                   ))}
@@ -373,7 +379,7 @@ function LocationBanner({ sharing, enabled, hasActive, onToggle }) {
   const text = !hasActive
     ? 'Live location turns on automatically when you have a delivery.'
     : !enabled ? 'Location sharing is off. Customers can’t see you on the map.'
-    : sharing.status === 'sharing' ? 'Sharing your live location with your customers. Keep this page open while you ride.'
+    : sharing.status === 'sharing' ? 'Sharing your location with Anavrin dispatch, and with the customer you’re delivering to right now. Keep this page open while you ride.'
     : sharing.error || 'Starting GPS…';
   const colors = { ok: 'border-ok-700/20 bg-ok-100 text-ok-700', danger: 'border-danger-700/20 bg-danger-100 text-danger-700', neutral: 'border-silver-300 bg-white text-ink-soft' };
   return (

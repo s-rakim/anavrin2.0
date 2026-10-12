@@ -117,7 +117,7 @@ export function LocationPicker({ value, onChange, error, store, onAvailability }
     <div>
       <MapCanvas
         className={`h-80 sm:h-96 ${error ? 'ring-2 ring-danger-700' : ''}`}
-        label="Delivery location map"
+        label="Delivery location map. Use the arrow keys to move the map and press Enter to drop the pin at its centre."
         center={value || NAIROBI}
         zoom={value ? 16 : 12}
         markers={markers}
@@ -148,38 +148,44 @@ export function LocationPicker({ value, onChange, error, store, onAvailability }
           </div>
           <AnimatePresence>
             {(results || searchError) && (
-              <motion.ul initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
-                className="mt-2 max-h-60 overflow-auto rounded-2xl bg-white py-1 shadow-[0_1px_3px_rgb(60_64_67/0.3),0_4px_8px_3px_rgb(60_64_67/0.15)]">
-                {searchError && <li className="px-4 py-3 text-sm text-danger-700">{searchError}</li>}
-                {results?.length === 0 && <li className="px-4 py-3 text-sm text-[#5f6368]">No places found. Try a nearby landmark.</li>}
-                {results?.map((r) => (
-                  <li key={r.id}>
-                    <button type="button" onClick={() => choose(r)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-[#f1f3f4]">
-                      <MapPin className="mt-0.5 size-4 shrink-0 text-[#5f6368]" aria-hidden />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-[#202124]">{r.title}</span>
-                        {r.subtitle && <span className="block truncate text-xs text-[#5f6368]">{r.subtitle}</span>}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+              // The list scrolls inside a box that always ends above the map's bottom-left logo, and the
+              // search credit is a fixed footer, so both stay visible (Google Places attribution rules).
+              <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }}
+                className="mt-2 overflow-hidden rounded-2xl bg-white shadow-[0_1px_3px_rgb(60_64_67/0.3),0_4px_8px_3px_rgb(60_64_67/0.15)]">
+                <ul className="max-h-48 overflow-auto py-1 sm:max-h-60">
+                  {searchError && <li className="px-4 py-3 text-sm text-danger-700">{searchError}</li>}
+                  {results?.length === 0 && <li className="px-4 py-3 text-sm text-[#5f6368]">No places found. Try a nearby landmark.</li>}
+                  {results?.map((r) => (
+                    <li key={r.id}>
+                      <button type="button" onClick={() => choose(r)} className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-[#f1f3f4]">
+                        <MapPin className="mt-0.5 size-4 shrink-0 text-[#5f6368]" aria-hidden />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium text-[#202124]">{r.title}</span>
+                          {r.subtitle && <span className="block truncate text-xs text-[#5f6368]">{r.subtitle}</span>}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
                 {results?.length > 0 && (
-                  <li className="border-t border-[#f1f3f4] px-4 pt-1.5 pb-1 text-right text-[11px] text-[#5f6368]">
+                  <p className="border-t border-[#f1f3f4] px-4 py-1.5 text-right text-xs text-[#5e5e5e]">
                     {provider === 'google' ? SEARCH_ATTRIBUTION.google : (
                       <a href="https://operations.osmfoundation.org/policies/nominatim/" target="_blank" rel="noreferrer" className="hover:underline">{SEARCH_ATTRIBUTION.open}</a>
                     )}
-                  </li>
+                  </p>
                 )}
-              </motion.ul>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        <div className="absolute right-3 bottom-8 z-[1100] flex flex-col gap-2">
-          <MapFab onClick={locate} label="Use my current location">
-            {locating ? <Spinner className="size-5 text-[#1a73e8]" /> : <LocateFixed className="size-5 text-[#1a73e8]" />}
-          </MapFab>
-        </div>
+        {!(results || searchError) && (
+          <div className="absolute right-3 bottom-8 z-[1100] flex flex-col gap-2">
+            <MapFab onClick={locate} label="Use my current location">
+              {locating ? <Spinner className="size-5 text-[#1a73e8]" /> : <LocateFixed className="size-5 text-[#1a73e8]" />}
+            </MapFab>
+          </div>
+        )}
 
         {!value && mapAvailable && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -191,10 +197,10 @@ export function LocationPicker({ value, onChange, error, store, onAvailability }
         )}
       </MapCanvas>
 
-      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+      <div className="mt-3 flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
         {value ? (
           <>
-            <span className="flex min-w-0 items-center gap-2 font-medium text-ink">
+            <span className="flex min-w-0 max-w-full items-center gap-2 font-medium text-ink">
               <MapPin className="size-4 shrink-0 text-[#EA4335]" aria-hidden />
               <span className="truncate">{naming ? 'Finding address…' : value.label || formatLatLng(value)}</span>
             </span>
@@ -203,10 +209,14 @@ export function LocationPicker({ value, onChange, error, store, onAvailability }
             </a>
           </>
         ) : <span className="text-muted">{mapAvailable
-          ? 'No pin yet. The rider uses it to navigate straight to you.'
+          ? 'Drop your pin (required). The rider uses it to navigate straight to you.'
           : 'Search for a nearby place or use your current location so the rider can find you. Optional on this device.'}</span>}
       </div>
       {(error || geoError) && <p className="field-error" role="alert">{error || geoError}</p>}
+      {/* Screen readers: search outcomes and the chosen drop-off point. */}
+      <p className="sr-only" aria-live="polite">
+        {searchError || (results ? `${results.length} place${results.length === 1 ? '' : 's'} found` : value && !naming ? `Pin set: ${value.label || formatLatLng(value)}` : '')}
+      </p>
     </div>
   );
 }
