@@ -70,7 +70,7 @@ export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, mark
               title={m.title || ''} anchorLeft={`-${geo.anchor[0]}px`} anchorTop={`-${geo.anchor[1]}px`}
               onClick={m.onClick ? () => m.onClick() : undefined}
               onDragEnd={(e) => e.latLng && m.onDragEnd?.({ lat: e.latLng.lat(), lng: e.latLng.lng() })}>
-              <div dangerouslySetInnerHTML={{ __html: markerHtml(m.kind, { label: m.label, heading: m.heading, status: m.status, title: m.title }) }} />
+              <div dangerouslySetInnerHTML={{ __html: markerHtml(m.kind, { label: m.label, heading: m.heading, status: m.status, title: m.title, stale: m.stale }) }} />
             </AdvancedMarker>
           );
         })}

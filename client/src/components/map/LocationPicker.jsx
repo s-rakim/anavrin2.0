@@ -11,7 +11,7 @@ import { SEARCH_ATTRIBUTION, reverseGeocode, searchPlaces } from './places';
  * Drop-off pin for checkout. Shoppers can search a place, tap the map, drag the red pin,
  * or use their phone's location. `value` is { lat, lng, label } or null.
  */
-export function LocationPicker({ value, onChange, error, store }) {
+export function LocationPicker({ value, onChange, error, store, onAvailability }) {
   const { provider } = useMapProvider();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState(null);
@@ -21,49 +21,64 @@ export function LocationPicker({ value, onChange, error, store }) {
   const [geoError, setGeoError] = useState('');
   const [fitKey, setFitKey] = useState(0);
   const [naming, setNaming] = useState(false);
+  const [mapAvailable, setMapAvailable] = useState(true);
   const typing = useRef(0);
-  const reverseSeq = useRef(0);
+  const pinSeq = useRef(0); // bumps on every pin change so late lookups can't move the pin back
+  const searchSeq = useRef(0);
+  const chosenTitle = useRef(null);
 
-  const place = async (pos, label = null, { recenter = false } = {}) => {
-    onChange({ lat: pos.lat, lng: pos.lng, label });
+  const lookupSource = provider === 'google' ? 'google' : 'osm';
+  // pointSource: 'user' (tap/drag), 'device' (GPS) or the search provider; labelSource likewise.
+  const place = async (pos, label = null, { recenter = false, pointSource = 'user' } = {}) => {
+    const seq = ++pinSeq.current;
+    const base = { lat: pos.lat, lng: pos.lng, pointSource };
+    onChange({ ...base, label, labelSource: label ? pointSource : null });
+    setResults(null);
     if (recenter) setFitKey((k) => k + 1);
-    if (label) return;
-    const seq = ++reverseSeq.current;
+    if (label) { setNaming(false); return; }
     setNaming(true);
     const name = await reverseGeocode(pos, provider);
-    if (seq !== reverseSeq.current) return; // a newer pin superseded this one
+    if (seq !== pinSeq.current) return; // a newer pin superseded this one
     setNaming(false);
-    if (name) onChange({ lat: pos.lat, lng: pos.lng, label: name });
+    if (name) onChange({ ...base, label: name, labelSource: lookupSource });
   };
 
   // Google supports search-as-you-type; the open fallback only searches when submitted.
   useEffect(() => {
     if (provider !== 'google') return undefined;
     clearTimeout(typing.current);
+    if (query === chosenTitle.current) return undefined; // the text came from picking a result
     if (query.trim().length < 3) { setResults(null); return undefined; }
     typing.current = setTimeout(() => runSearch(query), 300);
     return () => clearTimeout(typing.current);
   }, [query, provider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runSearch = async (q) => {
+    const seq = ++searchSeq.current;
     setSearching(true);
     setSearchError('');
     try {
-      setResults(await searchPlaces(q, provider, value || store || NAIROBI));
+      const found = await searchPlaces(q, provider === 'google' ? 'google' : 'open', value || store || NAIROBI);
+      if (seq === searchSeq.current) setResults(found); // ignore answers to older queries
     } catch (err) {
+      if (seq !== searchSeq.current) return;
       setSearchError(err.message || 'Search is unavailable. Tap the map instead.');
       setResults(null);
     } finally {
-      setSearching(false);
+      if (seq === searchSeq.current) setSearching(false);
     }
   };
 
   const choose = async (r) => {
     setResults(null);
+    chosenTitle.current = r.title;
     setQuery(r.title);
+    searchSeq.current += 1;
+    const seq = pinSeq.current;
     try {
       const pos = await r.resolve();
-      place(pos, pos.label, { recenter: true });
+      if (seq !== pinSeq.current) return; // the shopper moved the pin meanwhile
+      place(pos, pos.label, { recenter: true, pointSource: lookupSource });
     } catch {
       setSearchError('Couldn’t open that place. Try another or tap the map.');
     }
@@ -73,8 +88,13 @@ export function LocationPicker({ value, onChange, error, store }) {
     if (!navigator.geolocation) { setGeoError('Location isn’t available in this browser.'); return; }
     setLocating(true);
     setGeoError('');
+    const seq = pinSeq.current;
     navigator.geolocation.getCurrentPosition(
-      (p) => { setLocating(false); place({ lat: p.coords.latitude, lng: p.coords.longitude }, null, { recenter: true }); },
+      (p) => {
+        setLocating(false);
+        if (seq !== pinSeq.current) return; // the shopper placed a pin while we waited for GPS
+        place({ lat: p.coords.latitude, lng: p.coords.longitude }, null, { recenter: true, pointSource: 'device' });
+      },
       (err) => {
         setLocating(false);
         setGeoError(err.code === err.PERMISSION_DENIED
@@ -104,6 +124,7 @@ export function LocationPicker({ value, onChange, error, store }) {
         fitPoints={value ? [value] : []}
         fitKey={fitKey}
         onMapClick={(pos) => place(pos)}
+        onAvailability={(ok) => { setMapAvailable(ok); onAvailability?.(ok); }}
       >
         {/* Not a <form>: this sits inside the checkout form, and Enter here must never submit the order. */}
         <div className="absolute inset-x-3 top-3 z-[1100]" role="search">
@@ -111,7 +132,7 @@ export function LocationPicker({ value, onChange, error, store }) {
             <Search className="size-4 shrink-0 text-[#5f6368]" aria-hidden />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => { chosenTitle.current = null; setQuery(e.target.value); }}
               placeholder="Search estate, building or landmark"
               aria-label="Search for your delivery location"
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runSearch(query); } }}
@@ -160,7 +181,7 @@ export function LocationPicker({ value, onChange, error, store }) {
           </MapFab>
         </div>
 
-        {!value && (
+        {!value && mapAvailable && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
             className="pointer-events-none absolute inset-x-0 bottom-8 z-[1050] flex justify-center px-16">
             <span className="rounded-full bg-[#202124]/85 px-4 py-2 text-center text-[13px] font-medium text-white shadow-lg">
@@ -181,7 +202,9 @@ export function LocationPicker({ value, onChange, error, store }) {
               Check in Google Maps <ExternalLink className="size-3.5" aria-hidden />
             </a>
           </>
-        ) : <span className="text-muted">No pin yet. The rider uses it to navigate straight to you.</span>}
+        ) : <span className="text-muted">{mapAvailable
+          ? 'No pin yet. The rider uses it to navigate straight to you.'
+          : 'Search for a nearby place or use your current location so the rider can find you. Optional on this device.'}</span>}
       </div>
       {(error || geoError) && <p className="field-error" role="alert">{error || geoError}</p>}
     </div>

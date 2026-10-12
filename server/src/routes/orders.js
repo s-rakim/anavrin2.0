@@ -23,6 +23,9 @@ router.post('/', h((req, res) => {
   // Map pin for the drop-off spot (optional so checkout still works if the map can't load).
   const destination = latLng(req.body.destination, { kenya: true, name: 'Delivery pin' });
   const destLabel = destination ? str(req.body.destination?.label, { max: 160, name: 'Pin label' }) || null : null;
+  // Google Places/Geocoding content may only be kept for 30 days; flag it so it can be purged.
+  const labelFromGoogle = destination && destLabel && req.body.destination?.labelSource === 'google' ? 1 : 0;
+  const pointFromGoogle = destination && req.body.destination?.pointSource === 'google' ? 1 : 0;
 
   // Merge duplicate lines before validating stock.
   const wanted = new Map();
@@ -49,10 +52,11 @@ router.post('/', h((req, res) => {
     do code = orderCode(); while (one('SELECT id FROM orders WHERE code = ?', code));
 
     const id = run(
-      `INSERT INTO orders (code, user_id, phone, instructions, subtotal, delivery_fee, total, payment_method, dest_lat, dest_lng, dest_label)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO orders (code, user_id, phone, instructions, subtotal, delivery_fee, total, payment_method,
+                           dest_lat, dest_lng, dest_label, dest_label_google, dest_point_google)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       code, req.user.id, phone, instructions, subtotal, fee, subtotal + fee, paymentMethod,
-      destination?.lat ?? null, destination?.lng ?? null, destLabel,
+      destination?.lat ?? null, destination?.lng ?? null, destLabel, labelFromGoogle, pointFromGoogle,
     ).lastInsertRowid;
 
     const moves = [];
@@ -94,7 +98,9 @@ router.get('/:id', h((req, res) => {
 // Map data for the live tracker: the rider's breadcrumb trail and the pickup point.
 router.get('/:id/track', h((req, res) => {
   const order = ownOrder(req);
-  res.json({ trail: trailFor(order.id), store: STORE_LOCATION });
+  // Customers only see the route while their own delivery is live; afterwards the trail stays private.
+  const live = order.status === 'out_for_delivery' && !order.riderOnAnotherStop;
+  res.json({ trail: live || req.user.role === 'admin' ? trailFor(order.id) : [], store: STORE_LOCATION });
 }));
 
 // Customer confirms they received the goods: closes the order.

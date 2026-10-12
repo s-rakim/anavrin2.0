@@ -113,8 +113,10 @@ function OrderDrawer({ order, riders, onClose, onUpdated, toast }) {
   const [trail, setTrail] = useState([]);
   useEffect(() => {
     setTrail([]);
-    if (!order?.id || !order.destination) return;
-    api(`/admin/orders/${order.id}/track`).then((t) => setTrail(t.trail)).catch(() => {});
+    if (!order?.id || !order.destination) return undefined;
+    let current = true; // a slow response for a previously opened order must not land here
+    api(`/admin/orders/${order.id}/track`).then((t) => current && setTrail(t.trail)).catch(() => {});
+    return () => { current = false; };
   }, [order?.id, order?.status]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const loc = order?.riderLocation;
@@ -139,7 +141,7 @@ function OrderDrawer({ order, riders, onClose, onUpdated, toast }) {
   const canAssign = order && ['placed', 'confirmed', 'assigned'].includes(order.status);
   return (
     <Drawer open={!!order} onClose={onClose} title={order ? `Order ${order.code}` : ''}
-      footer={order && ['placed', 'confirmed', 'assigned'].includes(order.status) && (
+      footer={order && ['placed', 'confirmed', 'assigned', 'out_for_delivery'].includes(order.status) && order.paymentStatus !== 'paid' && (
         <div className="flex flex-wrap gap-2">
           {order.status === 'placed' && (
             <button className="btn btn-primary flex-1" disabled={!!busy} onClick={() => run('confirm', 'status', { status: 'confirmed' }, `Order ${order.code} confirmed. Riders can now see it.`)}>

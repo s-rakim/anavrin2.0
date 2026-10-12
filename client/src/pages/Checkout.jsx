@@ -22,6 +22,7 @@ export default function Checkout() {
   const [instructions, setInstructions] = useState('');
   const [method, setMethod] = useState('mpesa');
   const [destination, setDestination] = useState(null);
+  const [mapAvailable, setMapAvailable] = useState(true);
   const mapConfig = useMapConfig();
   const [errors, setErrors] = useState({});
   const [error, setError] = useState('');
@@ -46,7 +47,8 @@ export default function Checkout() {
     const errs = {};
     if (!isKePhone(phone)) errs.phone = 'Enter a Kenyan mobile number, e.g. 0712 345 678.';
     if (instructions.trim().length < 10) errs.instructions = 'Give the rider a bit more detail so they can find you.';
-    if (!destination) errs.destination = 'Drop a pin on the map so the rider can navigate to you.';
+    // The pin is required wherever a map can be shown; on devices that can't show one it's optional.
+    if (!destination && mapAvailable) errs.destination = 'Drop a pin on the map so the rider can navigate to you.';
     setErrors(errs);
     if (Object.keys(errs).length) return;
     setBusy(true);
@@ -112,7 +114,7 @@ export default function Checkout() {
             <h2 className="flex items-center gap-2 text-lg font-semibold"><MapPinned className="size-5 text-brand-600" aria-hidden /> Pin your drop-off point</h2>
             <p className="mt-1 mb-4 text-sm text-muted">Search, tap the map or use your location. Your rider follows this pin in Google Maps.</p>
             <LocationPicker value={destination} onChange={(d) => { setDestination(d); setErrors((e) => ({ ...e, destination: undefined })); }}
-              error={errors.destination} store={mapConfig?.store} />
+              error={errors.destination} store={mapConfig?.store} onAvailability={setMapAvailable} />
           </Reveal>
 
           <Reveal className="card p-6" delay={0.05}>

@@ -87,7 +87,7 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
     markers.filter((m) => m.position).forEach((m) => {
       seen.add(m.id);
       const geo = MARKER_GEOMETRY[m.kind] || MARKER_GEOMETRY.destination;
-      const html = markerHtml(m.kind, { label: m.label, heading: m.heading, status: m.status, title: m.title });
+      const html = markerHtml(m.kind, { label: m.label, heading: m.heading, status: m.status, title: m.title, stale: m.stale });
       let entry = refs.get(m.id);
       if (!entry) {
         const el = document.createElement('div');

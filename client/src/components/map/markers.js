@@ -21,7 +21,7 @@ const STATUS_COLORS = {
   out_for_delivery: '#5b2d8e',
 };
 
-export function markerHtml(kind, { label, heading, status, title } = {}) {
+export function markerHtml(kind, { label, heading, status, title, stale } = {}) {
   const t = esc(title || label || '');
   switch (kind) {
     case 'destination':
@@ -41,7 +41,7 @@ export function markerHtml(kind, { label, heading, status, title } = {}) {
     case 'me': {
       const beam = Number.isFinite(heading)
         ? `<span class="anv-mk-beam" style="transform: rotate(${Math.round(heading)}deg)"></span>` : '';
-      return `<div class="anv-mk anv-mk-puck ${kind === 'rider' ? 'is-rider' : ''}" title="${t}">
+      return `<div class="anv-mk anv-mk-puck ${kind === 'rider' ? 'is-rider' : ''} ${stale ? 'is-stale' : ''}" title="${t}">
         <span class="anv-mk-halo"></span>${beam}
         <span class="anv-mk-dot">${kind === 'rider'
           ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="18.5" cy="17.5" r="3.5"/><path d="M15 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2zm-3 11.5V14l-3-3 4-3 2 3h2"/></svg>' : ''}</span>

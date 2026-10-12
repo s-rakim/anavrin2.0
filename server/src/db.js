@@ -155,6 +155,11 @@ ensureColumn('users', 'last_lng', 'REAL');
 ensureColumn('users', 'last_heading', 'REAL');
 ensureColumn('users', 'last_accuracy', 'REAL');
 ensureColumn('users', 'last_location_at', 'TEXT');
+// The one delivery a rider is heading to right now; only that customer sees the rider live.
+ensureColumn('users', 'current_order_id', 'INTEGER');
+// Whether the pin's label / coordinates came from Google (Places or Geocoding), which may only be kept for 30 days.
+ensureColumn('orders', 'dest_label_google', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('orders', 'dest_point_google', 'INTEGER NOT NULL DEFAULT 0');
 
 /** Run fn inside a transaction; rolls back on throw. */
 export function tx(fn) {

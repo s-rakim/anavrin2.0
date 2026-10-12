@@ -60,7 +60,8 @@ export function addOrderEvent(orderId, status, actorId, note = null) {
 const ORDER_SELECT = `
   SELECT o.*, c.name AS customer_name, c.email AS customer_email,
          r.name AS rider_name, r.phone AS rider_phone,
-         r.last_lat AS rider_lat, r.last_lng AS rider_lng, r.last_heading AS rider_heading, r.last_location_at AS rider_location_at
+         r.last_lat AS rider_lat, r.last_lng AS rider_lng, r.last_heading AS rider_heading, r.last_location_at AS rider_location_at,
+         r.current_order_id AS rider_current_order_id
   FROM orders o
   JOIN users c ON c.id = o.user_id
   LEFT JOIN users r ON r.id = o.rider_id`;
@@ -91,6 +92,8 @@ function shapeOrder(o) {
     rider: o.rider_id ? { id: o.rider_id, name: o.rider_name, phone: o.rider_phone } : null,
     destination: o.dest_lat != null ? { lat: o.dest_lat, lng: o.dest_lng, label: o.dest_label || null } : null,
     riderLocation: riderLocationFor(o),
+    // On the way, but the rider is dropping off someone else first: no coordinates are shared.
+    riderOnAnotherStop: o.status === 'out_for_delivery' && !!o.rider_id && o.rider_current_order_id !== o.id,
     items,
     itemCount: items.reduce((n, i) => n + i.quantity, 0),
     events,
@@ -98,12 +101,13 @@ function shapeOrder(o) {
   };
 }
 
-// A rider's position is only shared while they are actively handling the order, and only if it is fresh.
+// A rider's position is only shared with the customer whose delivery is under way right now
+// (the rider's current stop), and only while it is reasonably fresh.
 const LIVE_STATUSES = ['assigned', 'out_for_delivery'];
 const LOCATION_MAX_AGE_MS = 30 * 60 * 1000;
 
 function riderLocationFor(o) {
-  if (!o.rider_id || !LIVE_STATUSES.includes(o.status) || o.rider_lat == null) return null;
+  if (!o.rider_id || o.status !== 'out_for_delivery' || o.rider_current_order_id !== o.id || o.rider_lat == null) return null;
   const at = parseDate(o.rider_location_at);
   if (!at || Date.now() - at.getTime() > LOCATION_MAX_AGE_MS) return null;
   return { lat: o.rider_lat, lng: o.rider_lng, heading: o.rider_heading, at: o.rider_location_at };

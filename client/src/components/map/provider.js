@@ -1,19 +1,38 @@
 import { useEffect, useState } from 'react';
 import { useMapConfig } from '../../lib/geo';
 
-// Once Google Maps fails (bad key, billing off, blocked network), every map on the page
-// switches to the open-map fallback instead of showing Google's error screen.
+// Provider fallbacks, decided once per page and shared by every map:
+//  Google Maps (key configured and accepted) -> open map (MapLibre, needs WebGL2) -> no map.
+// Once a provider fails (bad key, billing off, no WebGL2, crash), every map switches to the next one.
 let googleFailed = false;
+let openFailed = false;
+let webgl2;
 const listeners = new Set();
+const notify = () => listeners.forEach((fn) => fn());
 
 export function markGoogleFailed(reason) {
   if (googleFailed) return;
   googleFailed = true;
   console.warn(`[maps] Google Maps unavailable (${reason}); using the open map instead.`);
-  listeners.forEach((fn) => fn());
+  notify();
 }
 
-/** 'google' when a Maps API key is configured and working, 'open' otherwise, null while loading config. */
+export function markOpenMapFailed(reason) {
+  if (openFailed) return;
+  openFailed = true;
+  console.warn(`[maps] Open map unavailable (${reason}).`);
+  notify();
+}
+
+/** MapLibre needs WebGL2, which some older/budget phones and locked-down browsers lack. */
+function supportsWebGL2() {
+  if (webgl2 === undefined) {
+    try { webgl2 = !!document.createElement('canvas').getContext('webgl2'); } catch { webgl2 = false; }
+  }
+  return webgl2;
+}
+
+/** 'google' | 'open' | 'none', or null while loading config. */
 export function useMapProvider() {
   const config = useMapConfig();
   const [, force] = useState(0);
@@ -23,5 +42,8 @@ export function useMapProvider() {
     return () => listeners.delete(fn);
   }, []);
   if (!config) return { provider: null, config: null };
-  return { provider: config.maps?.googleApiKey && !googleFailed ? 'google' : 'open', config };
+  let provider = 'none';
+  if (config.maps?.googleApiKey && !googleFailed) provider = 'google';
+  else if (!openFailed && supportsWebGL2()) provider = 'open';
+  return { provider, config };
 }

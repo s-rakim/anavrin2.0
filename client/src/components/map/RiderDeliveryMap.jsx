@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Crosshair, ExternalLink, Navigation } from 'lucide-react';
 import { directionsUrl, distanceMeters, etaMinutes, formatDistance, pinUrl } from '../../lib/geo';
 import { MapCanvas, MapFab } from './MapCanvas';
@@ -13,8 +13,8 @@ export function RiderDeliveryMap({ order, me, store }) {
   const headingToStore = order.status === 'assigned' && store;
   const target = headingToStore ? store : dest;
   const remaining = me && target ? distanceMeters(me, target) : null;
-  const fitPoints = useMemo(() => [dest, me, headingToStore ? store : null].filter(Boolean),
-    [dest?.lat, !!me, headingToStore]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Always current; the map only re-fits when the key changes (button press, first GPS fix, leg change).
+  const fitPoints = [dest, me, headingToStore ? store : null].filter(Boolean);
 
   if (!dest) return null;
   const markers = [
@@ -27,7 +27,7 @@ export function RiderDeliveryMap({ order, me, store }) {
   return (
     <div>
       <MapCanvas className="h-64 sm:h-72" label={`Map for order ${order.code}`} center={dest} zoom={14}
-        markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${fitPoints.length}`}>
+        markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${me ? 'gps' : 'none'}-${order.status}`}>
         <div className="absolute top-3 right-3 z-[1100]">
           <MapFab onClick={() => setFitKey((k) => k + 1)} label="Recenter map"><Crosshair className="size-5" /></MapFab>
         </div>

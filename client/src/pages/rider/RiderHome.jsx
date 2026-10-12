@@ -12,7 +12,7 @@ import { money, phoneDigits, phoneLocal, timeAgo } from '../../lib/format';
 import { LiquidSegmented } from '../../components/LiquidGlass';
 import { CountUp, Page, Redirect, Reveal } from '../../components/Motion';
 import { OrderSteps } from '../../components/OrderTracker';
-import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
+import { Chip, EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
 import { RiderDeliveryMap } from '../../components/map/RiderDeliveryMap';
 import { useLocationSharing } from '../../components/map/useLocationSharing';
 import { distanceMeters, formatDistance, pinUrl, useMapConfig } from '../../lib/geo';
@@ -26,6 +26,7 @@ export default function RiderHome() {
   const [pool, setPool] = useState(null);
   const [tab, setTab] = useState('active');
   const [paying, setPaying] = useState(null);
+  const [failing, setFailing] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
 
@@ -83,11 +84,12 @@ export default function RiderHome() {
   if (user.role !== 'rider') return <Redirect to="/" replace />;
   if (user.status !== 'active') return <Redirect to="/rider/status" replace />;
 
-  const act = async (order, path, msg) => {
+  const act = async (order, path, msg, body = {}) => {
     setBusyId(order.id);
     try {
-      const { order: updated } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body: {} });
-      setMine((prev) => (prev.some((x) => x.id === updated.id) ? prev.map((x) => (x.id === updated.id ? updated : x)) : [updated, ...prev]));
+      const { order: updated } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body });
+      if (path === 'fail') setMine((prev) => prev.filter((x) => x.id !== order.id)); // back to the store and the pool
+      else setMine((prev) => (prev.some((x) => x.id === updated.id) ? prev.map((x) => (x.id === updated.id ? updated : x)) : [updated, ...prev]));
       if (path === 'claim') { setPool((prev) => prev.filter((x) => x.id !== order.id)); setTab('active'); }
       toast(msg);
       loadSummary();
@@ -157,7 +159,10 @@ export default function RiderHome() {
                     <DeliveryCard key={o.id} order={o} busy={busyId === o.id} me={me} store={mapConfig?.store}
                       onPickup={() => act(o, 'pickup', `Order ${o.code} is now on the way.`)}
                       onPay={() => setPaying(o)}
-                      onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)} />
+                      onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)}
+                      onFocus={() => act(o, 'focus', `Heading to ${o.customer.name.split(' ')[0]} now. Only they can see you live.`)}
+                      onFail={() => setFailing(o)}
+                      multiple={active.filter((x) => x.status === 'out_for_delivery').length > 1} />
                   ))}
                 </AnimatePresence>
               </motion.div>
@@ -212,6 +217,9 @@ export default function RiderHome() {
         </AnimatePresence>
       )}
 
+      <FailModal order={failing} onClose={() => setFailing(null)}
+        onSubmit={(o, note) => act(o, 'fail', `Order ${o.code} marked as not delivered. Return the items to the store.`, { note }).then(() => setFailing(null))} />
+
       <PaymentModal order={paying} onClose={() => setPaying(null)} onDone={(updated) => {
         setMine((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         toast(`${money(updated.total)} recorded for ${updated.code}.`, { title: 'Payment confirmed' });
@@ -221,7 +229,7 @@ export default function RiderHome() {
   );
 }
 
-function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, me, store }) {
+function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, onFocus, onFail, multiple, me, store }) {
   const paid = order.paymentStatus === 'paid';
   const wa = `https://wa.me/${phoneDigits(order.phone)}?text=${encodeURIComponent(`Hi ${order.customer.name.split(' ')[0]}, this is your Anavrin rider with order ${order.code}.`)}`;
   return (
@@ -229,7 +237,13 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, me, store }) {
       transition={{ type: 'spring', stiffness: 260, damping: 28 }} className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-silver-200 bg-silver-50 px-5 py-3.5">
         <p className="font-semibold">Order {order.code}</p>
-        <div className="flex flex-wrap gap-2"><StatusBadge status={order.status} /><PaymentBadge status={order.paymentStatus} method={order.paymentMethod} /></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {order.status === 'out_for_delivery' && !order.riderOnAnotherStop && multiple && <Chip tone="ok">Now delivering</Chip>}
+          {order.status === 'out_for_delivery' && order.riderOnAnotherStop && (
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={onFocus}>Deliver this one next</button>
+          )}
+          <StatusBadge status={order.status} /><PaymentBadge status={order.paymentStatus} method={order.paymentMethod} />
+        </div>
       </div>
 
       <div className="grid gap-5 p-5 md:grid-cols-[1.1fr_1fr]">
@@ -282,6 +296,11 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, me, store }) {
         <button className="btn btn-primary" disabled={busy || !paid} onClick={onDeliver} title={paid ? undefined : 'Confirm payment first'}>
           {busy ? <Spinner /> : <PackageCheck className="size-4" aria-hidden />} Mark delivered
         </button>
+        {!paid && (
+          <button className="btn btn-ghost btn-sm text-danger-700 hover:!bg-danger-100 hover:!text-danger-700 sm:col-span-3" disabled={busy} onClick={onFail}>
+            Couldn’t deliver this order
+          </button>
+        )}
       </div>
     </motion.article>
   );
@@ -368,5 +387,46 @@ function LocationBanner({ sharing, enabled, hasActive, onToggle }) {
           className={`absolute top-1 size-5 rounded-full bg-white shadow ${enabled ? 'right-1' : 'left-1'}`} />
       </button>
     </div>
+  );
+}
+
+const FAIL_REASONS = [
+  'Customer not answering the phone',
+  'Couldn’t find the location',
+  'Customer refused the order',
+  'Customer couldn’t pay',
+];
+
+function FailModal({ order, onClose, onSubmit }) {
+  const [reason, setReason] = useState(FAIL_REASONS[0]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (order) { setReason(FAIL_REASONS[0]); setNote(''); setBusy(false); } }, [order]);
+  return (
+    <Modal open={!!order} onClose={onClose} title={order ? `Couldn’t deliver ${order.code}?` : ''}>
+      {order && (
+        <form className="space-y-4 p-5" onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          try { await onSubmit(order, note.trim() ? `${reason}. ${note.trim()}` : reason); } finally { setBusy(false); }
+        }}>
+          <p className="text-sm text-ink-soft">The order goes back to the store and another delivery can be arranged. Please return the items to the store.</p>
+          <fieldset className="space-y-2">
+            <legend className="field-label">What happened?</legend>
+            {FAIL_REASONS.map((r) => (
+              <label key={r} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 text-sm ${reason === r ? 'border-brand-600 bg-brand-50' : 'border-silver-300'}`}>
+                <input type="radio" name="fail-reason" value={r} checked={reason === r} onChange={() => setReason(r)} /> {r}
+              </label>
+            ))}
+          </fieldset>
+          <div>
+            <label htmlFor="fail-note" className="field-label">Details (optional)</label>
+            <textarea id="fail-note" rows={2} maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} className="field resize-none"
+              placeholder="e.g. Called 3 times, gate locked" />
+          </div>
+          <button type="submit" className="btn btn-danger w-full" disabled={busy}>{busy ? <Spinner /> : 'Return order to the store'}</button>
+        </form>
+      )}
+    </Modal>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { parseDate } from './format';
 
 /** Nairobi CBD: the default map centre. */
 export const NAIROBI = { lat: -1.286389, lng: 36.817223 };
@@ -86,3 +87,14 @@ export function useAnimatedPosition(target, duration = 1200) {
   }, [target?.lat, target?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
   return pos;
 }
+
+/** Re-render every `ms` so "updated x ago" and staleness checks stay current without new data. */
+export function useNow(ms = 15000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(t); }, [ms]);
+  return now;
+}
+
+/** A rider fix older than this is shown as paused (phone locked, app in background, no signal). */
+export const LIVE_STALE_MS = 90 * 1000;
+export const ageMs = (at, now = Date.now()) => { const d = parseDate(at); return d ? now - d.getTime() : Infinity; };

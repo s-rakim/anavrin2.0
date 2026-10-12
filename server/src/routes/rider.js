@@ -3,6 +3,7 @@ import { all, one, run, tx } from '../db.js';
 import { requireActive, requireAuth, requireRole } from '../auth.js';
 import { emit, rooms } from '../realtime.js';
 import { addOrderEvent, broadcastOrder, getOrder, listOrders, poolView } from '../services.js';
+import { advanceCurrentStop, setCurrentStop } from '../tracking.js';
 import { bad, forbidden, h, notFound, str } from '../util.js';
 
 const router = Router();
@@ -63,7 +64,34 @@ router.post('/orders/:id/pickup', h((req, res) => {
   if (order.status !== 'assigned') throw bad('Only newly assigned orders can be marked as on the way.');
   run(`UPDATE orders SET status = 'out_for_delivery' WHERE id = ?`, order.id);
   addOrderEvent(order.id, 'out_for_delivery', req.user.id);
+  // Starting a delivery makes it the rider's current stop: that customer now sees them live.
+  const changed = setCurrentStop(req.user.id, order.id).filter((id) => id !== order.id);
+  changed.forEach((id) => broadcastOrder(id));
   res.json({ order: broadcastOrder(order.id) });
+}));
+
+// Carrying several orders: choose which customer you're heading to now (only they see you live).
+router.post('/orders/:id/focus', h((req, res) => {
+  const order = myOrder(req);
+  if (order.status !== 'out_for_delivery') throw bad('Start this delivery first.');
+  const changed = setCurrentStop(req.user.id, order.id);
+  changed.filter((id) => id !== order.id).forEach((id) => broadcastOrder(id));
+  res.json({ order: broadcastOrder(order.id) });
+}));
+
+// The customer couldn't be reached or refused the order: it goes back to the store and the pool.
+router.post('/orders/:id/fail', h((req, res) => {
+  const order = myOrder(req);
+  if (!['assigned', 'out_for_delivery'].includes(order.status)) throw bad('This order is not active.');
+  if (order.paymentStatus === 'paid') throw bad('Payment was already recorded for this order. Ask the Anavrin team to sort it out.');
+  const note = str(req.body.note, { required: true, max: 300, name: 'Reason' });
+  const changed = tx(() => {
+    run(`UPDATE orders SET status = 'confirmed', rider_id = NULL WHERE id = ?`, order.id);
+    addOrderEvent(order.id, 'delivery_failed', req.user.id, note);
+    return advanceCurrentStop(req.user.id, order.id);
+  });
+  changed.filter((id) => id !== order.id).forEach((id) => broadcastOrder(id));
+  res.json({ order: broadcastOrder(order.id, { previousRiderId: req.user.id }) });
 }));
 
 router.post('/orders/:id/payment', h((req, res) => {
@@ -92,6 +120,7 @@ router.post('/orders/:id/deliver', h((req, res) => {
   if (order.paymentStatus !== 'paid') throw bad('Confirm payment before marking the order as delivered.');
   run(`UPDATE orders SET status = 'delivered' WHERE id = ?`, order.id);
   addOrderEvent(order.id, 'delivered', req.user.id, str(req.body.note, { max: 300, name: 'Note' }) || null);
+  advanceCurrentStop(req.user.id, order.id).filter((id) => id !== order.id).forEach((id) => broadcastOrder(id));
   res.json({ order: broadcastOrder(order.id) });
 }));
 

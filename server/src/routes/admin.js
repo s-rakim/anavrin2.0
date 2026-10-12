@@ -3,13 +3,13 @@ import crypto from 'node:crypto';
 import multer from 'multer';
 import { UPLOAD_DIR, all, one, run, tx } from '../db.js';
 import { publicUser, requireAuth, requireRole } from '../auth.js';
-import { emit, rooms } from '../realtime.js';
+import { emit, resetUserRooms, rooms } from '../realtime.js';
 import {
   addOrderEvent, broadcastMovement, broadcastOrder, broadcastProduct, getMovement, getProduct, listOrders,
   recordMovement, serializeProduct,
 } from '../services.js';
 import { restockOrderItems } from './orders.js';
-import { fleet, trailFor } from '../tracking.js';
+import { fleet, releaseOrderStop, trailFor } from '../tracking.js';
 import { riderStats } from './rider.js';
 import { STORE_LOCATION, bad, h, int, notFound, str } from '../util.js';
 
@@ -186,7 +186,8 @@ router.get('/orders', h((req, res) => {
 
 const ADMIN_TRANSITIONS = {
   confirmed: ['placed'],
-  cancelled: ['placed', 'confirmed', 'assigned'],
+  // Includes out_for_delivery so a delivery that can't be completed can always be closed (stock is returned).
+  cancelled: ['placed', 'confirmed', 'assigned', 'out_for_delivery'],
 };
 
 router.post('/orders/:id/status', h((req, res) => {
@@ -199,6 +200,7 @@ router.post('/orders/:id/status', h((req, res) => {
   const prevRider = order.rider?.id ?? null;
   const moves = tx(() => {
     if (status === 'cancelled') {
+      if (order.paymentStatus === 'paid') throw bad('This order has been paid. Refund the customer before cancelling it.');
       run(`UPDATE orders SET status = 'cancelled' WHERE id = ?`, id);
       addOrderEvent(id, 'cancelled', req.user.id, str(req.body.note, { max: 200, name: 'Reason' }) || 'Cancelled by Anavrin');
       return restockOrderItems(order, req.user.id);
@@ -207,7 +209,10 @@ router.post('/orders/:id/status', h((req, res) => {
     addOrderEvent(id, status, req.user.id);
     return [];
   });
-  if (status === 'cancelled') order.items.forEach((i) => i.productId && broadcastProduct(i.productId));
+  if (status === 'cancelled') {
+    order.items.forEach((i) => i.productId && broadcastProduct(i.productId));
+    releaseOrderStop(id).filter((x) => x !== id).forEach((x) => broadcastOrder(x));
+  }
   moves.forEach(broadcastMovement);
   res.json({ order: broadcastOrder(id, { previousRiderId: prevRider }) });
 }));
@@ -267,6 +272,8 @@ router.patch('/users/:id', h((req, res) => {
   run('UPDATE users SET role = ?, status = ? WHERE id = ?', role, status, id);
   // Tell the user's open sessions to refresh their access.
   emit('session:refresh', {}, rooms.user(id));
+  // Don't trust the browser to reconnect: drop admin/rider rooms now (and cut suspended users off).
+  resetUserRooms(id, { disconnect: status === 'suspended' });
   emit('stats:changed', {}, rooms.admins);
   res.json({ user: publicUser(one('SELECT * FROM users WHERE id = ?', id)) });
 }));
@@ -297,6 +304,7 @@ router.post('/applications/:id/:decision(approve|reject)', h((req, res) => {
     run(`UPDATE users SET status = ? WHERE id = ?`, approve ? 'active' : 'rejected', a.user_id);
   });
   emit('session:refresh', {}, rooms.user(a.user_id));
+  resetUserRooms(a.user_id);
   emit('application:reviewed', { id, status: approve ? 'approved' : 'rejected' }, rooms.admins);
   emit('stats:changed', {}, rooms.admins);
   res.json({ ok: true });

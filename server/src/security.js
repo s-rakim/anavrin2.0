@@ -28,12 +28,20 @@ export function rateLimit({ windowMs, max, key = (req) => req.ip, message }) {
 // Google Maps needs its own hosts (and, per Google's CSP guide, inline/eval for its loader),
 // so those are only allowed when a Maps key is configured. The open map (MapLibre + OpenFreeMap)
 // needs its vector tiles/fonts/sprites and a web worker; its place search goes through /api/geo.
+// Narrower than Google's documented allowlist: no 'unsafe-inline' and no user-content hosts, so an
+// HTML-injection bug still can't run inline or third-party-hosted scripts. Set CSP_GOOGLE_COMPAT=true
+// to fall back to Google's full allowlist if a Maps feature you enable needs it.
+function googleScriptSrc() {
+  return process.env.CSP_GOOGLE_COMPAT === 'true'
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:"
+    : "script-src 'self' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com blob:";
+}
+
 function buildCsp(google) {
   const g = google;
   return [
     "default-src 'self'",
-    g ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:"
-      : "script-src 'self'",
+    g ? googleScriptSrc() : "script-src 'self'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' https: data: blob:",

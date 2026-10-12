@@ -28,6 +28,18 @@ export function initRealtime(httpServer, { onUser } = {}) {
   return io;
 }
 
+/**
+ * Re-evaluate a user's access after their role or status changed: their open sockets leave the
+ * privileged rooms immediately (the client reconnects and re-joins from fresh database state).
+ * Suspended users are disconnected outright.
+ */
+export function resetUserRooms(userId, { disconnect = false } = {}) {
+  if (!io) return;
+  const sockets = io.in(rooms.user(userId));
+  if (disconnect) sockets.disconnectSockets(true);
+  else sockets.socketsLeave([rooms.admins, rooms.riders]);
+}
+
 export function emit(event, payload, ...targets) {
   if (!io) return;
   if (targets.length === 0) io.emit(event, payload);

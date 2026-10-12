@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
-import { Bike, Crosshair, MapPinned, Phone } from 'lucide-react';
+import { Bike, Crosshair, MapPinned, Phone, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useSocketEvent } from '../../lib/socket';
 import { STATUS, phoneLocal, timeAgo } from '../../lib/format';
-import { distanceMeters, formatDistance } from '../../lib/geo';
+import { LIVE_STALE_MS, ageMs, distanceMeters, formatDistance, useNow } from '../../lib/geo';
 import { MapCanvas, MapFab } from '../../components/map/MapCanvas';
 import { Chip, EmptyState, StatusBadge } from '../../components/ui';
 import { AdminHeader } from './AdminLayout';
@@ -21,7 +21,13 @@ export default function LiveMap() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [focus, setFocus] = useState(null);
+  const [focusSeq, setFocusSeq] = useState(0);
+  // Each tap re-centres, even on the same rider or order after the map was moved.
+  const focusOn = (f) => { setFocus(f); setFocusSeq((n) => n + 1); };
   const [fitKey, setFitKey] = useState(0);
+  const now = useNow(15000);
+  // "Online" means a fix within the last 2 minutes, re-evaluated as time passes.
+  const isOnline = (r) => ageMs(r.at, now) < 2 * 60 * 1000;
 
   const load = useCallback(async () => {
     try { setError(''); setData(await api('/admin/fleet')); } catch (err) { setError(err.message); }
@@ -41,18 +47,19 @@ export default function LiveMap() {
 
   const pinned = useMemo(() => (data?.orders || []).filter((o) => o.destination), [data]);
   const located = useMemo(() => (data?.riders || []).filter((r) => r.lat != null), [data]);
-  const fitPoints = useMemo(() => [data?.store, ...pinned.map((o) => o.destination), ...located.map((r) => ({ lat: r.lat, lng: r.lng }))].filter(Boolean),
-    [data?.store, pinned.length, located.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Always current; the map only re-fits when fitKey changes.
+  const fitPoints = [data?.store, ...pinned.map((o) => o.destination), ...located.map((r) => ({ lat: r.lat, lng: r.lng }))].filter(Boolean);
 
   const markers = [
     data?.store && { id: 'store', kind: 'store', position: data.store, title: data.store.name, label: 'Store' },
     ...pinned.map((o) => ({
       id: `o${o.id}`, kind: 'order', status: o.status, position: o.destination, label: o.code, title: `${o.code} · ${o.customer.name}`,
-      onClick: () => setFocus({ type: 'order', id: o.id }), zIndex: 5,
+      onClick: () => focusOn({ type: 'order', id: o.id }), zIndex: 5,
     })),
     ...located.map((r) => ({
-      id: `r${r.id}`, kind: 'rider', position: { lat: r.lat, lng: r.lng }, heading: r.heading, label: r.name.split(' ')[0],
-      title: `${r.name}${r.online ? '' : ` · last seen ${timeAgo(r.at)}`}`, onClick: () => setFocus({ type: 'rider', id: r.id }), zIndex: 10,
+      id: `r${r.id}`, kind: 'rider', position: { lat: r.lat, lng: r.lng }, heading: ageMs(r.at, now) > LIVE_STALE_MS ? null : r.heading,
+      stale: ageMs(r.at, now) > LIVE_STALE_MS, label: r.name.split(' ')[0],
+      title: `${r.name}${isOnline(r) ? '' : ` · last seen ${timeAgo(r.at)}`}`, onClick: () => focusOn({ type: 'rider', id: r.id }), zIndex: 10,
     })),
   ].filter(Boolean);
 
@@ -64,7 +71,7 @@ export default function LiveMap() {
   })).filter(Boolean);
 
   const focused = focus?.type === 'order' ? pinned.find((o) => o.id === focus.id) : focus?.type === 'rider' ? located.find((r) => r.id === focus.id) : null;
-  const panTo = focused ? { ...(focus.type === 'order' ? focused.destination : { lat: focused.lat, lng: focused.lng }), key: `${focus.type}${focus.id}` } : null;
+  const panTo = focused ? { ...(focus.type === 'order' ? focused.destination : { lat: focused.lat, lng: focused.lng }), key: `${focus.type}${focus.id}-${focusSeq}` } : null;
 
   return (
     <>
@@ -72,7 +79,8 @@ export default function LiveMap() {
       {error ? <div className="card"><EmptyState title="Couldn’t load the live map" action={<button className="btn btn-secondary" onClick={load}>Try again</button>}>{error}</EmptyState></div> : (
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <MapCanvas className="h-[60dvh] min-h-[420px] xl:h-[calc(100dvh-170px)]" label="Live fleet map"
-            center={data?.store} zoom={12} markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${data ? 1 : 0}`} panTo={panTo}>
+            center={data?.store} zoom={12} markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${data ? 1 : 0}`} panTo={panTo}
+            onMapClick={() => setFocus(null)}>
             <div className="absolute top-3 right-3 z-[1100]">
               <MapFab onClick={() => { setFocus(null); setFitKey((k) => k + 1); }} label="Show everything"><Crosshair className="size-5" /></MapFab>
             </div>
@@ -85,7 +93,9 @@ export default function LiveMap() {
             </ul>
             {focused && (
               <motion.div key={`${focus.type}${focus.id}`} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-                className="absolute inset-x-3 top-3 z-[1100] max-w-sm rounded-[20px] bg-white p-4 shadow-[0_1px_3px_rgb(60_64_67/0.3),0_4px_8px_3px_rgb(60_64_67/0.15)] sm:right-auto">
+                className="absolute top-3 right-16 left-3 z-[1100] max-w-sm rounded-[20px] bg-white p-4 pr-10 shadow-[0_1px_3px_rgb(60_64_67/0.3),0_4px_8px_3px_rgb(60_64_67/0.15)] sm:right-auto">
+                <button onClick={() => setFocus(null)} aria-label="Close details"
+                  className="absolute top-2 right-2 grid size-9 place-items-center rounded-full text-[#5f6368] hover:bg-[#f1f3f4]"><X className="size-4" /></button>
                 {focus.type === 'order' ? (
                   <>
                     <div className="flex items-center justify-between gap-2"><p className="font-semibold">{focused.code}</p><StatusBadge status={focused.status} /></div>
@@ -97,7 +107,7 @@ export default function LiveMap() {
                   <>
                     <p className="font-semibold">{focused.name}</p>
                     <a href={`tel:${focused.phone}`} className="text-sm text-brand-700 hover:underline">{phoneLocal(focused.phone)}</a>
-                    <p className="text-xs text-muted">{focused.online ? 'Online now' : `Last seen ${timeAgo(focused.at)}`} · {focused.orders.length} active</p>
+                    <p className="text-xs text-muted">{isOnline(focused) ? 'Online now' : `Last seen ${timeAgo(focused.at)}`} · {focused.orders.length} active</p>
                   </>
                 )}
               </motion.div>
@@ -112,11 +122,11 @@ export default function LiveMap() {
                   {data.riders.map((r) => (
                     <li key={r.id}>
                       <button className="flex w-full items-center gap-3 py-2.5 text-left disabled:cursor-default" disabled={r.lat == null}
-                        onClick={() => setFocus({ type: 'rider', id: r.id })}>
-                        <span className={`size-2.5 shrink-0 rounded-full ${r.online ? 'bg-ok-700' : 'bg-silver-400'}`} aria-hidden />
+                        aria-label={`Show ${r.name} on the map`} onClick={() => focusOn({ type: 'rider', id: r.id })}>
+                        <span className={`size-2.5 shrink-0 rounded-full ${isOnline(r) ? 'bg-ok-700' : 'bg-silver-400'}`} aria-hidden />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-medium">{r.name}</span>
-                          <span className="block text-xs text-muted">{r.lat == null ? 'Location not shared yet' : r.online ? 'Online' : `Last seen ${timeAgo(r.at)}`}</span>
+                          <span className="block text-xs text-muted">{r.lat == null ? 'Location not shared yet' : isOnline(r) ? 'Online' : `Last seen ${timeAgo(r.at)}`}</span>
                         </span>
                         {r.orders.length > 0 && <Chip tone="berry">{r.orders.length} active</Chip>}
                       </button>
@@ -135,7 +145,7 @@ export default function LiveMap() {
                     return (
                       <li key={o.id}>
                         <button className="flex w-full items-center gap-3 py-2.5 text-left disabled:cursor-default" disabled={!o.destination}
-                          onClick={() => setFocus({ type: 'order', id: o.id })}>
+                          onClick={() => focusOn({ type: 'order', id: o.id })}>
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm font-medium">{o.code} · {o.customer.name}</span>
                             <span className="block truncate text-xs text-muted">
