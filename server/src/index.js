@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import multer from 'multer';
-import { UPLOAD_DIR } from './db.js';
+import { UPLOAD_DIR, db } from './db.js';
 import { initRealtime } from './realtime.js';
 import { rateLimit, securityHeaders } from './security.js';
 import authRoutes from './routes/auth.js';
@@ -24,7 +24,10 @@ const PORT = Number(process.env.PORT) || 4000;
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', process.env.TRUST_PROXY === 'true');
+// TRUST_PROXY: unset/false = don't trust X-Forwarded-For; true = trust it; or an Express trust list
+// such as "loopback, uniquelocal" (only trust proxies on private networks, e.g. a Caddy container).
+const trust = process.env.TRUST_PROXY;
+app.set('trust proxy', !trust || trust === 'false' ? false : trust === 'true' ? true : trust.split(',').map((x) => x.trim()));
 app.use(securityHeaders);
 app.use(express.json({ limit: '200kb' }));
 
@@ -70,9 +73,24 @@ app.use((err, req, res, next) => {
 });
 
 const server = http.createServer(app);
-initRealtime(server, { onUser: attachTracking });
+const io = initRealtime(server, { onUser: attachTracking });
 
 // Location data retention (see tracking.js): run now and every 6 hours.
 purgeOldLocationData();
 setInterval(purgeOldLocationData, 6 * 60 * 60 * 1000).unref();
 server.listen(PORT, () => console.log(`Anavrin API listening on http://localhost:${PORT}`));
+
+// Stop cleanly on `docker stop` or Ctrl+C: finish open requests, close sockets and the database.
+let stopping = false;
+function shutdown(signal) {
+  if (stopping) return;
+  stopping = true;
+  console.log(`${signal} received, shutting down`);
+  setTimeout(() => process.exit(1), 8000).unref();
+  io.close(() => {
+    db.close();
+    process.exit(0);
+  });
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

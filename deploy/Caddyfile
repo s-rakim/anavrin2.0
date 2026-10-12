@@ -1,0 +1,5 @@
+# HTTPS reverse proxy for Anavrin. Caddy obtains and renews the TLS certificate automatically.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4000
+}

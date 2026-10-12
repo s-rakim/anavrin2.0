@@ -25,6 +25,44 @@ npm run build          # builds the storefront into client/dist
 npm start              # serves the API, websockets and the built store on :4000
 ```
 
+## Run it with Docker
+
+Needs only [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows or Mac) or Docker Engine with the Compose plugin (Linux). Node.js isn't needed. The commands below work in PowerShell, Terminal and bash.
+
+```powershell
+cd $HOME                                   # not C:\Windows\System32
+git clone -b anavrin-store https://github.com/s-rakim/anavrin2.0.git
+cd anavrin2.0
+cp server/.env.example server/.env         # then open server/.env and set your admin email and password
+docker compose up -d --build
+```
+
+Open **http://localhost:8080**. The first build takes a few minutes. To use another port, copy `.env.example` to `.env` and change `ANAVRIN_PORT`.
+
+| Task | Command |
+| --- | --- |
+| See the logs | `docker compose logs -f app` |
+| Stop / start | `docker compose stop` / `docker compose start` |
+| Apply changes to `server/.env` | `docker compose up -d` |
+| Update to the latest code | `git pull`, then `docker compose up -d --build` |
+| Make someone an admin | `docker compose exec app node scripts/make-admin.js someone@example.com` (add a password to create a new account) |
+| Back up | `docker compose stop app`, `docker compose cp app:/data ./anavrin-backup`, `docker compose start app` |
+| Restore a backup | `docker compose stop app`, `docker compose cp ./anavrin-backup/. app:/data`, `docker compose run --rm --no-deps -u root app chown -R node:node /data`, `docker compose start app` |
+
+The database, uploaded product images and login secret live in the `anavrin-data` Docker volume. They survive restarts, rebuilds and `docker compose down`. **`docker compose down -v` deletes them.**
+
+### Going live with HTTPS
+
+Phones only share their location with HTTPS sites, so riders need HTTPS for live tracking. Phones on your Wi-Fi can open `http://<your computer's IP>:8080` to shop, but riders' GPS won't work that way.
+
+To serve the store on your own domain, with free automatic certificates from Let's Encrypt (via the bundled [Caddy](https://caddyserver.com) container):
+
+1. Point your domain's DNS (an `A` record) at the server's public IP, and open ports 80 and 443.
+2. Copy `.env.example` to `.env` and set `DOMAIN=shop.example.co.ke`.
+3. Run `docker compose --profile https up -d --build`.
+
+The store is then at `https://shop.example.co.ke`. Also set `ANAVRIN_PORT=127.0.0.1:8080` in `.env`, so the plain-HTTP port isn't open to the internet. If you use a Google Maps key, add the domain to the key's allowed websites. Use the same `--profile https` on later `up` commands.
+
 ### Accounts
 
 On first start the server creates:
@@ -42,7 +80,7 @@ Set `SEED_DEMO_USERS=false` to skip the demo accounts, and **change the admin pa
 Nobody can sign up as an admin. You can:
 
 - promote or demote accounts from **Admin → People**, or
-- run `npm run make-admin -- someone@example.com` (add a password to create a new admin account).
+- run `npm run make-admin -- someone@example.com` (add a password to create a new admin account). Under Docker, use the command in the table above.
 
 ## Maps and live tracking
 
@@ -104,7 +142,7 @@ server/   Express API + Socket.IO + SQLite (node:sqlite), JWT auth
 
 Order flow: **placed → confirmed (admin) → rider assigned → on the way → delivered (rider, after payment) → received (shopper)**. Stock is reserved at checkout and returned on cancellation; every change is logged in `stock_movements`.
 
-Data lives in `server/data/` (SQLite database, uploaded images, generated token secret). Back this folder up.
+Data lives in `server/data/` (SQLite database, uploaded images, generated token secret), or in the `anavrin-data` volume under Docker. Back it up.
 
 ## Design notes
 
@@ -119,4 +157,4 @@ Data lives in `server/data/` (SQLite database, uploaded images, generated token 
 - Login and sign-up are rate limited. Security headers and a Content-Security-Policy are set on the storefront.
 - Image uploads are admin-only, limited to 5 MB, and stored with an extension derived from the image type.
 - Riders only see a buyer's phone number and directions after accepting the delivery.
-- Sessions use a bearer token stored in the browser. For a public launch, consider moving to an HTTP-only cookie, putting the app behind HTTPS (set `TRUST_PROXY=true` behind a proxy) and adding Safaricom Daraja (STK push) to confirm M-Pesa payments automatically instead of riders entering the code.
+- Sessions use a bearer token stored in the browser. For a public launch, consider moving to an HTTP-only cookie, putting the app behind HTTPS (behind a reverse proxy, set `TRUST_PROXY` to the proxy's address, or `true`; Docker Compose sets it for you) and adding Safaricom Daraja (STK push) to confirm M-Pesa payments automatically instead of riders entering the code.

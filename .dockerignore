@@ -1,0 +1,18 @@
+# Keep the build context small and secrets out of the image.
+.git
+.github
+.claude
+docs
+**/node_modules
+client/dist
+server/data
+anavrin-backup
+**/.env
+**/.env.*
+!**/.env.example
+*.log
+**/.DS_Store
+Dockerfile
+.dockerignore
+compose.yaml
+deploy

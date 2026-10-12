@@ -1,0 +1,48 @@
+# Anavrin with Docker Compose.
+#   docker compose up -d --build                      -> http://localhost:8080 (or ANAVRIN_PORT)
+#   docker compose --profile https up -d --build      -> https://$DOMAIN with automatic certificates
+# Settings: copy server/.env.example to server/.env. Compose options (DOMAIN, ANAVRIN_PORT): copy .env.example to .env.
+name: anavrin
+
+services:
+  app:
+    build: .
+    image: anavrin:latest
+    restart: unless-stopped
+    env_file:
+      - path: server/.env
+        required: false
+    environment:
+      DATA_DIR: /data
+      PORT: "4000"
+      # Trust X-Forwarded-For only from private networks (the Caddy container), so rate limits see real client IPs.
+      TRUST_PROXY: "loopback, uniquelocal"
+    ports:
+      - "${ANAVRIN_PORT:-8080}:4000"
+    volumes:
+      - anavrin-data:/data
+
+  # Optional HTTPS front door (needed for riders' phones to share GPS). Requires a domain whose DNS
+  # points at this machine and ports 80/443 open: set DOMAIN in .env, then use --profile https.
+  caddy:
+    image: caddy:2.11.7-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  anavrin-data:
+  caddy-data:
+  caddy-config:
