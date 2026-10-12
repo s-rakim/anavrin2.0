@@ -53,3 +53,37 @@ export function orderCode() {
 export const DELIVERY_FEE = 200;
 export const FREE_DELIVERY_OVER = 5000;
 export const deliveryFeeFor = (subtotal) => (subtotal >= FREE_DELIVERY_OVER ? 0 : DELIVERY_FEE);
+
+// Rough bounding box for Kenya, used to sanity-check pinned delivery destinations.
+const KENYA = { minLat: -4.9, maxLat: 5.2, minLng: 33.5, maxLng: 42.2 };
+
+/** Validate a {lat, lng} pair. With `kenya`, the point must fall inside Kenya. Returns null when absent. */
+export function latLng(value, { kenya = false, name = 'Location' } = {}) {
+  if (value === undefined || value === null) return null;
+  const lat = Number(value.lat);
+  const lng = Number(value.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw bad(`${name} is not a valid map position.`);
+  }
+  if (kenya && (lat < KENYA.minLat || lat > KENYA.maxLat || lng < KENYA.minLng || lng > KENYA.maxLng)) {
+    throw bad('Anavrin delivers within Kenya. Move the pin to your delivery spot in Kenya.');
+  }
+  return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+}
+
+/** Great-circle distance in metres. */
+export function distanceMeters(a, b) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+/** Where riders collect orders. Configure with STORE_LAT / STORE_LNG / STORE_NAME. */
+export const STORE_LOCATION = {
+  name: process.env.STORE_NAME || 'Anavrin Hub, Westlands',
+  lat: Number(process.env.STORE_LAT) || -1.2676,
+  lng: Number(process.env.STORE_LNG) || 36.8108,
+};

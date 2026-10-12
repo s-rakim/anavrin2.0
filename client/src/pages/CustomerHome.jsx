@@ -9,6 +9,8 @@ import { api } from '../lib/api';
 import { useSocketEvent } from '../lib/socket';
 import { STATUS, dateTime, money, phoneDigits, phoneLocal, timeAgo } from '../lib/format';
 import { OrderSteps, OrderTimeline } from '../components/OrderTracker';
+import { OrderTrackingMap } from '../components/map/OrderTrackingMap';
+import { useMapConfig } from '../lib/geo';
 import { ProductCard } from '../components/ProductCard';
 import { Page, Redirect, Reveal } from '../components/Motion';
 import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../components/ui';
@@ -29,6 +31,8 @@ export default function CustomerHome() {
   const [orders, setOrders] = useState(null);
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState(null);
+  const [trails, setTrails] = useState({});
+  const mapConfig = useMapConfig();
 
   const load = useCallback(async () => {
     try {
@@ -41,6 +45,25 @@ export default function CustomerHome() {
   }, []);
 
   useEffect(() => { if (user?.role === 'customer') load(); }, [user, load]);
+
+  // Load the rider's breadcrumb trail for orders that are on the way.
+  const trackable = useMemo(() => (orders || []).filter((o) => o.destination && o.status === 'out_for_delivery').map((o) => o.id).join(','), [orders]);
+  useEffect(() => {
+    if (!trackable) return;
+    trackable.split(',').map(Number).forEach((id) => {
+      api(`/orders/${id}/track`).then(({ trail }) => setTrails((t) => ({ ...t, [id]: trail }))).catch(() => {});
+    });
+  }, [trackable]);
+
+  // Live GPS from the rider: move the marker and extend the trail.
+  useSocketEvent('order:location', (loc) => {
+    setOrders((prev) => prev && prev.map((o) => (o.id === loc.orderId ? { ...o, riderLocation: { lat: loc.lat, lng: loc.lng, heading: loc.heading, at: loc.at } } : o)));
+    setTrails((t) => {
+      const order = orders?.find((o) => o.id === loc.orderId);
+      if (!order || order.status !== 'out_for_delivery') return t;
+      return { ...t, [loc.orderId]: [...(t[loc.orderId] || []), { lat: loc.lat, lng: loc.lng, at: loc.at }].slice(-500) };
+    });
+  });
 
   useSocketEvent('order:updated', (order) => {
     setOrders((prev) => {
@@ -94,7 +117,8 @@ export default function CustomerHome() {
               <motion.div layout className="mt-4 space-y-5">
                 <AnimatePresence initial={false}>
                   {active.map((o, i) => (
-                    <ActiveOrderCard key={o.id} order={o} index={i} highlight={location.state?.highlight === o.id} onConfirm={() => setConfirming(o)} />
+                    <ActiveOrderCard key={o.id} order={o} index={i} highlight={location.state?.highlight === o.id} onConfirm={() => setConfirming(o)}
+                      trail={trails[o.id]} store={mapConfig?.store} />
                   ))}
                 </AnimatePresence>
               </motion.div>
@@ -127,7 +151,7 @@ export default function CustomerHome() {
   );
 }
 
-function ActiveOrderCard({ order, index, highlight, onConfirm }) {
+function ActiveOrderCard({ order, index, highlight, onConfirm, trail, store }) {
   const [open, setOpen] = useState(false);
   return (
     <motion.article
@@ -147,6 +171,10 @@ function ActiveOrderCard({ order, index, highlight, onConfirm }) {
       </div>
 
       <div className="px-5 py-6"><OrderSteps status={order.status} /></div>
+
+      {order.destination && (
+        <div className="px-5 pb-5"><OrderTrackingMap order={order} trail={trail} store={store} viewer="customer" /></div>
+      )}
 
       <AnimatePresence initial={false}>
         {order.rider && (

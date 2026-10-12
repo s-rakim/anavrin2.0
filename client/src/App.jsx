@@ -26,6 +26,7 @@ const LiveStock = lazy(() => import('./pages/admin/LiveStock'));
 const Riders = lazy(() => import('./pages/admin/Riders'));
 const People = lazy(() => import('./pages/admin/People'));
 const Transactions = lazy(() => import('./pages/admin/Transactions'));
+const LiveMap = lazy(() => import('./pages/admin/LiveMap'));
 
 /** Group routes so the page transition runs between sections, while the admin area animates its own sub-pages. */
 const transitionKey = (pathname) => (pathname.startsWith('/admin') ? 'admin' : pathname);
@@ -58,6 +59,7 @@ export default function App() {
                 <Route path="orders" element={<Orders />} />
                 <Route path="inventory" element={<Inventory />} />
                 <Route path="stock" element={<LiveStock />} />
+                <Route path="map" element={<LiveMap />} />
                 <Route path="riders" element={<Riders />} />
                 <Route path="people" element={<People />} />
                 <Route path="transactions" element={<Transactions />} />

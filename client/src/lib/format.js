@@ -53,6 +53,7 @@ export const STATUS = {
   received: { label: 'Completed', tone: 'ok' },
   cancelled: { label: 'Cancelled', tone: 'danger' },
   payment_confirmed: { label: 'Payment confirmed', tone: 'ok' },
+  delivery_failed: { label: 'Delivery attempt failed', tone: 'danger' },
 };
 
 export const stepIndex = (status) => ORDER_STEPS.findIndex((s) => s.key === status);

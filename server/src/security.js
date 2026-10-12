@@ -25,26 +25,46 @@ export function rateLimit({ windowMs, max, key = (req) => req.ip, message }) {
   };
 }
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "img-src 'self' https: data: blob:",
-  "connect-src 'self' ws: wss:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "frame-ancestors 'none'",
-].join('; ');
+// Google Maps needs its own hosts (and, per Google's CSP guide, inline/eval for its loader),
+// so those are only allowed when a Maps key is configured. The open map (MapLibre + OpenFreeMap)
+// needs its vector tiles/fonts/sprites and a web worker; its place search goes through /api/geo.
+// Narrower than Google's documented allowlist: no 'unsafe-inline' and no user-content hosts, so an
+// HTML-injection bug still can't run inline or third-party-hosted scripts. Set CSP_GOOGLE_COMPAT=true
+// to fall back to Google's full allowlist if a Maps feature you enable needs it.
+function googleScriptSrc() {
+  return process.env.CSP_GOOGLE_COMPAT === 'true'
+    ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:"
+    : "script-src 'self' 'unsafe-eval' https://maps.googleapis.com https://maps.gstatic.com blob:";
+}
+
+function buildCsp(google) {
+  const g = google;
+  return [
+    "default-src 'self'",
+    g ? googleScriptSrc() : "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' https: data: blob:",
+    `connect-src 'self' ws: wss: https://tiles.openfreemap.org${g ? ' https://*.googleapis.com *.google.com https://*.gstatic.com data: blob:' : ''}`,
+    "worker-src 'self' blob:",
+    ...(g ? ['frame-src *.google.com'] : []),
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+  ].join('; ');
+}
 
 export function securityHeaders(req, res, next) {
   res.set({
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    // Geolocation is used for the checkout pin and for riders' live location.
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(self)',
     'Cross-Origin-Opener-Policy': 'same-origin',
   });
-  if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) res.set('Content-Security-Policy', CSP);
+  if (!req.path.startsWith('/api') && !req.path.startsWith('/socket.io')) {
+    res.set('Content-Security-Policy', buildCsp(!!process.env.GOOGLE_MAPS_API_KEY));
+  }
   next();
 }

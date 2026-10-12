@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { AnimatePresence, motion } from 'motion/react';
 import {
-  Banknote, Bike, CircleCheck, Hand, MessageCircle, MessageSquareText, Navigation, PackageCheck, PackageOpen, Phone, Smartphone, Wallet,
+  Banknote, Bike, CircleCheck, Hand, MapPinned, MessageCircle, MessageSquareText, Navigation, PackageCheck, PackageOpen, Phone, Smartphone, Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -12,7 +12,10 @@ import { money, phoneDigits, phoneLocal, timeAgo } from '../../lib/format';
 import { LiquidSegmented } from '../../components/LiquidGlass';
 import { CountUp, Page, Redirect, Reveal } from '../../components/Motion';
 import { OrderSteps } from '../../components/OrderTracker';
-import { EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
+import { Chip, EmptyState, LiveIndicator, Modal, PaymentBadge, Spinner, StatusBadge } from '../../components/ui';
+import { RiderDeliveryMap } from '../../components/map/RiderDeliveryMap';
+import { useLocationSharing } from '../../components/map/useLocationSharing';
+import { distanceMeters, formatDistance, pinUrl, useMapConfig } from '../../lib/geo';
 
 /** Rider landing page: delivery count, buyer contact & directions, payment confirmation and delivery status. */
 export default function RiderHome() {
@@ -23,6 +26,7 @@ export default function RiderHome() {
   const [pool, setPool] = useState(null);
   const [tab, setTab] = useState('active');
   const [paying, setPaying] = useState(null);
+  const [failing, setFailing] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState('');
 
@@ -63,17 +67,29 @@ export default function RiderHome() {
   useSocketEvent('order:removed', ({ id }) => { setMine((prev) => prev && prev.filter((x) => x.id !== id)); loadSummary(); });
 
   const active = useMemo(() => (mine || []).filter((o) => ['assigned', 'out_for_delivery'].includes(o.status)), [mine]);
+  const mapConfig = useMapConfig();
+  const [sharePref, setSharePref] = useState(() => {
+    try { return localStorage.getItem('anavrin.shareLocation') !== 'off'; } catch { return true; }
+  });
+  const toggleShare = () => setSharePref((v) => {
+    try { localStorage.setItem('anavrin.shareLocation', v ? 'off' : 'on'); } catch { /* storage unavailable */ }
+    return !v;
+  });
+  // GPS is shared only while the rider is carrying an order and has sharing switched on.
+  const sharing = useLocationSharing(sharePref && active.length > 0);
+  const me = sharing.position;
   const done = useMemo(() => (mine || []).filter((o) => ['delivered', 'received'].includes(o.status)), [mine]);
 
   if (!user) return <Redirect to="/login" replace />;
   if (user.role !== 'rider') return <Redirect to="/" replace />;
   if (user.status !== 'active') return <Redirect to="/rider/status" replace />;
 
-  const act = async (order, path, msg) => {
+  const act = async (order, path, msg, body = {}) => {
     setBusyId(order.id);
     try {
-      const { order: updated } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body: {} });
-      setMine((prev) => (prev.some((x) => x.id === updated.id) ? prev.map((x) => (x.id === updated.id ? updated : x)) : [updated, ...prev]));
+      const { order: updated } = await api(`/rider/orders/${order.id}/${path}`, { method: 'POST', body });
+      if (path === 'fail') setMine((prev) => prev.filter((x) => x.id !== order.id)); // back to the store and the pool
+      else setMine((prev) => (prev.some((x) => x.id === updated.id) ? prev.map((x) => (x.id === updated.id ? updated : x)) : [updated, ...prev]));
       if (path === 'claim') { setPool((prev) => prev.filter((x) => x.id !== order.id)); setTab('active'); }
       toast(msg);
       loadSummary();
@@ -115,6 +131,8 @@ export default function RiderHome() {
         ))}
       </motion.ul>
 
+      <LocationBanner sharing={sharing} enabled={sharePref} hasActive={active.length > 0} onToggle={toggleShare} />
+
       <div className="sticky top-[88px] z-20 mt-8 py-2">
         <LiquidSegmented value={tab} onChange={setTab} options={[
           { value: 'active', label: 'My deliveries', count: active.length },
@@ -138,10 +156,13 @@ export default function RiderHome() {
               <motion.div layout className="space-y-5">
                 <AnimatePresence initial={false}>
                   {active.map((o) => (
-                    <DeliveryCard key={o.id} order={o} busy={busyId === o.id}
+                    <DeliveryCard key={o.id} order={o} busy={busyId === o.id} me={me} store={mapConfig?.store}
                       onPickup={() => act(o, 'pickup', `Order ${o.code} is now on the way.`)}
                       onPay={() => setPaying(o)}
-                      onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)} />
+                      onDeliver={() => act(o, 'deliver', `Order ${o.code} delivered. The customer will confirm receipt.`)}
+                      onFocus={() => act(o, 'focus', `Heading to ${o.customer.name.split(' ')[0]} now. Only they can see you live.`)}
+                      onFail={() => setFailing(o)}
+                      multiple={active.filter((x) => x.status === 'out_for_delivery').length > 1} />
                   ))}
                 </AnimatePresence>
               </motion.div>
@@ -161,6 +182,15 @@ export default function RiderHome() {
                       </div>
                       <p className="mt-3 text-sm text-ink-soft">{o.items.map((i) => `${i.quantity}× ${i.name}`).join(', ')}</p>
                       <p className="mt-2 text-xs text-muted">Collect via {o.paymentMethod === 'mpesa' ? 'M-Pesa' : 'cash'} on delivery. Buyer contact and directions unlock when you accept.</p>
+                      {o.approxDestination && (
+                        <p className="mt-2 flex flex-wrap items-center gap-x-2 text-xs font-medium text-brand-700">
+                          <span>
+                            {[me && `About ${formatDistance(distanceMeters(me, o.approxDestination))} from you`,
+                              mapConfig?.store && `${formatDistance(distanceMeters(mapConfig.store, o.approxDestination))} from the store`].filter(Boolean).join(' · ')}
+                          </span>
+                          <a href={pinUrl(o.approxDestination)} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">View area</a>
+                        </p>
+                      )}
                       <button className="btn btn-primary mt-4" disabled={busyId === o.id} onClick={() => act(o, 'claim', `You’ve accepted order ${o.code}.`)}>
                         {busyId === o.id ? <Spinner /> : <Hand className="size-4" aria-hidden />} Accept delivery
                       </button>
@@ -187,6 +217,9 @@ export default function RiderHome() {
         </AnimatePresence>
       )}
 
+      <FailModal order={failing} onClose={() => setFailing(null)}
+        onSubmit={(o, note) => act(o, 'fail', `Order ${o.code} marked as not delivered. Return the items to the store.`, { note }).then(() => setFailing(null))} />
+
       <PaymentModal order={paying} onClose={() => setPaying(null)} onDone={(updated) => {
         setMine((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
         toast(`${money(updated.total)} recorded for ${updated.code}.`, { title: 'Payment confirmed' });
@@ -196,7 +229,7 @@ export default function RiderHome() {
   );
 }
 
-function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
+function DeliveryCard({ order, busy, onPickup, onPay, onDeliver, onFocus, onFail, multiple, me, store }) {
   const paid = order.paymentStatus === 'paid';
   const wa = `https://wa.me/${phoneDigits(order.phone)}?text=${encodeURIComponent(`Hi ${order.customer.name.split(' ')[0]}, this is your Anavrin rider with order ${order.code}.`)}`;
   return (
@@ -204,7 +237,13 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
       transition={{ type: 'spring', stiffness: 260, damping: 28 }} className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-silver-200 bg-silver-50 px-5 py-3.5">
         <p className="font-semibold">Order {order.code}</p>
-        <div className="flex flex-wrap gap-2"><StatusBadge status={order.status} /><PaymentBadge status={order.paymentStatus} method={order.paymentMethod} /></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {order.status === 'out_for_delivery' && !order.riderOnAnotherStop && multiple && <Chip tone="ok">Now delivering</Chip>}
+          {order.status === 'out_for_delivery' && order.riderOnAnotherStop && (
+            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={onFocus}>Deliver this one next</button>
+          )}
+          <StatusBadge status={order.status} /><PaymentBadge status={order.paymentStatus} method={order.paymentMethod} />
+        </div>
       </div>
 
       <div className="grid gap-5 p-5 md:grid-cols-[1.1fr_1fr]">
@@ -242,6 +281,8 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
         </div>
       </div>
 
+      {order.destination && <div className="px-5 pb-5"><RiderDeliveryMap order={order} me={me} store={store} /></div>}
+
       <div className="px-5 pb-4"><OrderSteps status={order.status} compact /></div>
 
       {/* Actions sit at the bottom of the card, within easy thumb reach. */}
@@ -255,6 +296,11 @@ function DeliveryCard({ order, busy, onPickup, onPay, onDeliver }) {
         <button className="btn btn-primary" disabled={busy || !paid} onClick={onDeliver} title={paid ? undefined : 'Confirm payment first'}>
           {busy ? <Spinner /> : <PackageCheck className="size-4" aria-hidden />} Mark delivered
         </button>
+        {!paid && (
+          <button className="btn btn-ghost btn-sm text-danger-700 hover:!bg-danger-100 hover:!text-danger-700 sm:col-span-3" disabled={busy} onClick={onFail}>
+            Couldn’t deliver this order
+          </button>
+        )}
       </div>
     </motion.article>
   );
@@ -315,6 +361,70 @@ function PaymentModal({ order, onClose, onDone }) {
           <button type="submit" className="btn btn-primary h-12 w-full" disabled={busy}>
             {busy ? <><Spinner /> Recording…</> : `I’ve received ${money(order.total)}`}
           </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function LocationBanner({ sharing, enabled, hasActive, onToggle }) {
+  const tone = sharing.status === 'denied' || sharing.status === 'unsupported' ? 'danger'
+    : sharing.status === 'sharing' ? 'ok' : 'neutral';
+  const text = !hasActive
+    ? 'Live location turns on automatically when you have a delivery.'
+    : !enabled ? 'Location sharing is off. Customers can’t see you on the map.'
+    : sharing.status === 'sharing' ? 'Sharing your live location with your customers. Keep this page open while you ride.'
+    : sharing.error || 'Starting GPS…';
+  const colors = { ok: 'border-ok-700/20 bg-ok-100 text-ok-700', danger: 'border-danger-700/20 bg-danger-100 text-danger-700', neutral: 'border-silver-300 bg-white text-ink-soft' };
+  return (
+    <div className={`mt-4 flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${colors[tone]}`} role="status">
+      <MapPinned className="size-5 shrink-0" aria-hidden />
+      <span className="min-w-0 flex-1 font-medium">{text}</span>
+      <button type="button" role="switch" aria-checked={enabled} onClick={onToggle}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${enabled ? 'bg-ok-700' : 'bg-silver-400'}`}>
+        <span className="sr-only">Share live location</span>
+        <motion.span layout transition={{ type: 'spring', stiffness: 600, damping: 32 }}
+          className={`absolute top-1 size-5 rounded-full bg-white shadow ${enabled ? 'right-1' : 'left-1'}`} />
+      </button>
+    </div>
+  );
+}
+
+const FAIL_REASONS = [
+  'Customer not answering the phone',
+  'Couldn’t find the location',
+  'Customer refused the order',
+  'Customer couldn’t pay',
+];
+
+function FailModal({ order, onClose, onSubmit }) {
+  const [reason, setReason] = useState(FAIL_REASONS[0]);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (order) { setReason(FAIL_REASONS[0]); setNote(''); setBusy(false); } }, [order]);
+  return (
+    <Modal open={!!order} onClose={onClose} title={order ? `Couldn’t deliver ${order.code}?` : ''}>
+      {order && (
+        <form className="space-y-4 p-5" onSubmit={async (e) => {
+          e.preventDefault();
+          setBusy(true);
+          try { await onSubmit(order, note.trim() ? `${reason}. ${note.trim()}` : reason); } finally { setBusy(false); }
+        }}>
+          <p className="text-sm text-ink-soft">The order goes back to the store and another delivery can be arranged. Please return the items to the store.</p>
+          <fieldset className="space-y-2">
+            <legend className="field-label">What happened?</legend>
+            {FAIL_REASONS.map((r) => (
+              <label key={r} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3 text-sm ${reason === r ? 'border-brand-600 bg-brand-50' : 'border-silver-300'}`}>
+                <input type="radio" name="fail-reason" value={r} checked={reason === r} onChange={() => setReason(r)} /> {r}
+              </label>
+            ))}
+          </fieldset>
+          <div>
+            <label htmlFor="fail-note" className="field-label">Details (optional)</label>
+            <textarea id="fail-note" rows={2} maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} className="field resize-none"
+              placeholder="e.g. Called 3 times, gate locked" />
+          </div>
+          <button type="submit" className="btn btn-danger w-full" disabled={busy}>{busy ? <Spinner /> : 'Return order to the store'}</button>
         </form>
       )}
     </Modal>

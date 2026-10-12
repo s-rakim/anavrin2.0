@@ -9,7 +9,8 @@ export const rooms = {
   user: (id) => `user:${id}`,
 };
 
-export function initRealtime(httpServer) {
+/** `onUser(socket, user)` lets other modules attach handlers for signed-in sockets. */
+export function initRealtime(httpServer, { onUser } = {}) {
   io = new Server(httpServer, { cors: { origin: true, credentials: true } });
 
   io.on('connection', (socket) => {
@@ -21,9 +22,22 @@ export function initRealtime(httpServer) {
     socket.join(rooms.user(user.id));
     if (user.role === 'admin') socket.join(rooms.admins);
     if (user.role === 'rider' && user.status === 'active') socket.join(rooms.riders);
+    onUser?.(socket, user);
   });
 
   return io;
+}
+
+/**
+ * Re-evaluate a user's access after their role or status changed: their open sockets leave the
+ * privileged rooms immediately (the client reconnects and re-joins from fresh database state).
+ * Suspended users are disconnected outright.
+ */
+export function resetUserRooms(userId, { disconnect = false } = {}) {
+  if (!io) return;
+  const sockets = io.in(rooms.user(userId));
+  if (disconnect) sockets.disconnectSockets(true);
+  else sockets.socketsLeave([rooms.admins, rooms.riders]);
 }
 
 export function emit(event, payload, ...targets) {
