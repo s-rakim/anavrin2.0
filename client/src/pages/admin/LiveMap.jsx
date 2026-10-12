@@ -80,7 +80,7 @@ export default function LiveMap() {
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <MapCanvas className="h-[60dvh] min-h-[420px] xl:h-[calc(100dvh-170px)]" label="Live fleet map"
             center={data?.store} zoom={12} markers={markers} paths={paths} fitPoints={fitPoints} fitKey={`${fitKey}-${data ? 1 : 0}`} panTo={panTo}
-            onMapClick={() => setFocus(null)}>
+            onMapClick={() => setFocus(null)} gestures="greedy">
             <div className="absolute top-3 right-3 z-[1100]">
               <MapFab onClick={() => { setFocus(null); setFitKey((k) => k + 1); }} label="Show everything"><Crosshair className="size-5" /></MapFab>
             </div>

@@ -43,7 +43,7 @@ function FailureWatch({ onReady }) {
   return null;
 }
 
-export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, onReady }) {
+export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, gestures = 'cooperative', onReady }) {
   return (
     <APIProvider apiKey={apiKey} version="weekly" region="KE" language="en" libraries={['marker', 'places', 'geocoding']}
       onError={() => markGoogleFailed('load error')}>
@@ -52,7 +52,7 @@ export default function GoogleMapCanvas({ apiKey, mapId, center, zoom = 13, mark
         mapId={mapId || 'DEMO_MAP_ID'}
         defaultCenter={center}
         defaultZoom={zoom}
-        gestureHandling={interactive ? 'greedy' : 'none'}
+        gestureHandling={interactive ? gestures : 'none'}
         disableDefaultUI
         clickableIcons={false}
         colorScheme="LIGHT"

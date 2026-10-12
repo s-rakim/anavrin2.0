@@ -23,7 +23,7 @@ function googleTint(map) {
 
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, onReady }) {
+export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths = [], onMapClick, fitPoints, fitKey, panTo, interactive = true, gestures = 'cooperative', onReady }) {
   const container = useRef(null);
   const mapRef = useRef(null);
   const markerRefs = useRef(new Map()); // id -> { marker, html, draggable, props }
@@ -42,7 +42,8 @@ export default function OpenMapCanvas({ center, zoom = 13, markers = [], paths =
       interactive,
       dragRotate: false,
       pitchWithRotate: false,
-      cooperativeGestures: false,
+      // Inside a scrolling page: two fingers (or Ctrl + scroll) move the map, so the page still scrolls.
+      cooperativeGestures: gestures === 'cooperative',
       fadeDuration: 150,
     });
     map.touchZoomRotate?.disableRotation?.();
