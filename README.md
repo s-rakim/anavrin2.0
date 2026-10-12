@@ -49,6 +49,16 @@ Nobody can sign up as an admin. You can:
 - **Checkout:** the shopper drops a pin on the map. They can search a place, tap the map, drag the red pin or use their phone's location. The pin is required and must be in Kenya.
 - **Shopper tracking:** the shopper's home page shows the store, their pin and the rider moving live, with the route travelled so far, the distance and an approximate arrival time.
 - **Riders:** while carrying an order, a rider's phone shares its GPS position (there's an on/off switch). Each delivery card shows a map and a **Navigate in Google Maps** button. It opens turn-by-turn directions in the Google Maps app, motorbike mode where Google offers it, going first to the store and then to the customer. Riders only see a rough area for a job until they accept it.
+- **Privacy:**
+  - Only the customer whose delivery is under way *right now* sees the rider live.
+  - Customers waiting for pickup, or queued behind another drop-off, see "Your rider is finishing another delivery" and no location.
+  - Riders carrying several orders pick which one they're heading to ("Deliver this one next").
+  - A customer can't see the rider's route after their order is delivered.
+  - Delivery trails are deleted 30 days after an order ends, and a rider's last position after 7 days.
+- **Failed deliveries:**
+  - A rider can mark an order **Couldn't deliver**, with a reason. The order goes back to the store and the pool.
+  - Admins can cancel an unpaid order even while it's out for delivery; its stock is returned.
+- **When the rider's location goes quiet** (phone locked, Google Maps app in front, weak signal), the customer sees "Rider's live location paused" with when they were last seen, not a stale arrival time.
 - **Admins:** **Admin → Live map** shows every rider's position and every open order's pin. The order drawer shows the same live map for one order.
 
 ### Choosing a map
@@ -66,12 +76,15 @@ If the Google key is rejected (wrong key, billing off, site not allowed), every 
 3. Restrict the key to your website's address.
 4. Optionally create a **Map ID** and set `GOOGLE_MAPS_MAP_ID`.
 
-**Open-map search:** without a Google key, place search uses the public OpenStreetMap Nominatim service through the server. Its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) allows one request per second for the whole app and no search-as-you-type. The server enforces both, caches results, and identifies itself with `NOMINATIM_CONTACT`. That is fine for testing and light use; for real traffic, add a Google key or point `NOMINATIM_URL` at your own geocoder.
+**Open-map search:** without a Google key, place search (for signed-in shoppers) uses the public OpenStreetMap Nominatim service through the server. Its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) allows one request per second for the whole app and no search-as-you-type. The server enforces both, caches results, and identifies itself with `NOMINATIM_CONTACT`. That is fine for testing and light use; for real traffic, add a Google key or point `NOMINATIM_URL` at your own geocoder.
 
 **Things to know:**
 - Phones only share location on **HTTPS** sites (or `localhost`).
 - A web page can't track a rider in the background. Riders should keep the Anavrin page open, with the screen on, while delivering.
 - Set the store's position with `STORE_LAT`, `STORE_LNG` and `STORE_NAME`.
+- **Devices without WebGL2:** some older budget phones can't draw the open map. They get a "map can't be shown" panel, but search and "use my location" still work, and the pin becomes optional for them.
+- **Security policy with Google Maps:** with a Google key set, the site's Content-Security-Policy allows only Google's Maps script hosts (no inline scripts). If a Google feature you enable later is blocked, set `CSP_GOOGLE_COMPAT=true` to use Google's full documented allowlist.
+- **Google's terms:** pin addresses and coordinates that came from Google search or address lookup are cleared after 30 days, as the Google Maps Platform terms require.
 
 ## How it fits together
 
